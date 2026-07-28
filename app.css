@@ -273,3 +273,13 @@ button, .tab, .dish, .done-btn, .cat-item{min-height:44px;}
 /* unpaid warning at the top of the kitchen summary */
 .kwarn{background:rgba(181,82,44,.16); border:1px solid var(--rust); border-radius:9px;
   padding:11px 12px; color:#e6a68c; font-size:12.5px; line-height:1.5; margin:10px 0 4px;}
+
+/* On a narrow phone the name, total and three buttons cannot share one row:
+   the name wraps and the total lands on top of the summary. Give the buttons
+   their own row instead. */
+@media (max-width: 460px){
+  .p-head{flex-wrap:wrap; gap:8px;}
+  .p-main{flex:1 1 auto; min-width:0;}
+  .p-right{flex:1 1 100%; justify-content:flex-end; margin-top:2px;}
+  .p-name{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+}

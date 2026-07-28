@@ -152,9 +152,8 @@ function kitchenHTML() {
   const unpaid = rows.filter(r => r.profile_id && !r.paid_at && r.items.length);
   const warn = unpaid.length
     ? '<div class="kwarn">⚠ ' + unpaid.length +
-      (unpaid.length === 1 ? ' неплатена поръчка' : ' неплатени поръчки') + ': ' +
-      esc(unpaid.map(r => r.who).join(', ')) +
-      '<br>Неплатените поръчки не се обработват.</div>'
+      (unpaid.length === 1 ? ' неплатена поръчка: ' : ' неплатени поръчки: ') +
+      esc(unpaid.map(r => r.who).join(', ')) + '</div>'
     : '';
 
   return '<div class="kitchen"><h2><span>Обобщение за кухнята</span></h2>' +
