@@ -130,8 +130,8 @@ function personHTML(row, idx) {
       '<div class="ksub">Аламинут</div>' + gridHTML(row, ala, 'alaminut') +
       '<div class="ksub">Меню</div>' + gridHTML(row, menu, 'menu') +
       '<div class="p-actions">' +
-        '<button class="clear" data-aclear="' + row.id + '">Изчисти поръчката</button>' +
-        '<button class="del" data-adel="' + row.id + '">Изтрий човека</button>' +
+        '<button class="clear" data-aclear="' + row.id + '">Изчисти</button>' +
+        '<button class="del" data-adel="' + row.id + '">Изтрий</button>' +
       '</div>' +
     '</div></div>';
 }
@@ -197,7 +197,7 @@ function draw() {
       ? ordered.map(personHTML).join('')
       : '<div class="empty-state"><div class="big">🍽️</div>' +
         'Още никой не е записан за този ден.</div>') +
-    '<button class="add-person" id="aAddGuest">+ Добави човек</button>' +
+    '<button class="add-person" id="aAddGuest">+ Добави</button>' +
     kitchenHTML() +
     '<div class="totalbar"><div><div class="lbl">Всичко за деня</div>' +
       '<div class="val">' + eur(grand()) + '</div></div>' +
@@ -266,8 +266,8 @@ function bind() {
       const id = el.getAttribute('data-aclear');
       const row = rows.find(r => r.id === id);
       if (!row.items.length) return;
-      if (!await ask('Изчистване на поръчка',
-        `Всички ястия на „${row.who}“ ще бъдат премахнати. Човекът остава в списъка.`,
+      if (!await ask('Изчистване',
+        `Всички ястия на „${row.who}“ ще бъдат премахнати. Редът остава.`,
         'Изчисти', true)) return;
       try {
         await api.clearOrderItems(id);
@@ -281,7 +281,7 @@ function bind() {
     el.onclick = async () => {
       const id = el.getAttribute('data-adel');
       const row = rows.find(r => r.id === id);
-      if (!await ask('Изтриване на човек',
+      if (!await ask('Изтриване',
         `„${row.who}“ и поръчката му ще изчезнат от този ден.`, 'Изтрий')) return;
       try {
         await api.deleteOrder(id);
@@ -293,7 +293,7 @@ function bind() {
   });
 
   document.getElementById('aAddGuest').onclick = async () => {
-    const name = await askText('Добави човек',
+    const name = await askText('Добави',
       'Звание и фамилия. След това отвори реда и избери аламинут или меню.',
       '', 'напр. р-к Иванов');
     if (!name) return;
