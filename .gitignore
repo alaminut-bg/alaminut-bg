@@ -1,0 +1,11 @@
+# local notes of the Supabase values + local dev server config.
+# The deployed app does NOT read this — the URL and anon key live in js/supabase.js.
+.env
+.env.*
+
+# never commit this one
+*service_role*
+
+.DS_Store
+Thumbs.db
+node_modules/
