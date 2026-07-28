@@ -126,25 +126,15 @@ function gridHTML(source) {
 }
 
 /**
- * One box per dish. Кутия is the pinned extra in the меню grid, so it is
- * counted apart from the food rather than as another dish.
+ * A plain reminder, not a count — how many dishes fit in one box is the
+ * person's call, so there is no right number to check against.
  */
 function boxHint(source) {
   if (source !== 'menu') return '';
   const st = S.menu;
-  let dishes = 0, boxes = 0;
-  for (const d of st.dishes) {
-    const q = Number(st.qty[d.id]) || 0;
-    if (!q) continue;
-    if (d.pinned) boxes += q; else dishes += q;
-  }
-  if (!dishes) return '';
-
-  if (boxes >= dishes) {
-    return '<div class="warn-note">✓ ' + dishes + ' ястия · ' + boxes + ' кутии</div>';
-  }
-  return '<div class="kwarn">📦 ' + dishes + ' ястия, ' + boxes + ' кутии — ' +
-    'добави още ' + (dishes - boxes) + '. Трябва по 1 кутия за всяко ястие.</div>';
+  const orderedFood = st.dishes.some(d => !d.pinned && (Number(st.qty[d.id]) || 0) > 0);
+  if (!orderedFood) return '';
+  return '<div class="warn-note">📦 Не забравяй кутиите.</div>';
 }
 
 /** Прати / Модифицирай, plus the state line above it. */
