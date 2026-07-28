@@ -15,6 +15,7 @@ drop function if exists is_locked(date, text) cascade;
 drop function if exists enforce_lock() cascade;
 drop function if exists enforce_orders_lock() cascade;
 drop function if exists enforce_completion() cascade;
+drop function if exists enforce_profile_self_edit() cascade;
 drop function if exists sofia_date() cascade;
 drop function if exists sofia_time() cascade;
 drop function if exists app_now() cascade;
@@ -68,6 +69,10 @@ create table dishes (
   price        numeric(6,2) not null default 0 check (price >= 0),
   in_alaminut  boolean not null default false,
   alaminut_pos integer not null default 0,
+  -- Always offered with the меню too, without being placed on each day by
+  -- hand — e.g. Кутия. Still one dish row, so its price is edited in one
+  -- place and changes everywhere at once.
+  pinned_to_menu boolean not null default false,
   archived     boolean not null default false,
   created_at   timestamptz not null default now()
 );
@@ -147,6 +152,7 @@ declare
   v_price    numeric(6,2);
   v_in_alam  boolean;
   v_archived boolean;
+  v_pinned   boolean;
 begin
   v_row := coalesce(new, old);
   select serve_date into v_date from orders where id = v_row.order_id;
@@ -188,7 +194,8 @@ begin
   -- after it was legitimately ordered.
 
   -- rule: the dish must actually be offered under the chosen source
-  select archived, in_alaminut into v_archived, v_in_alam
+  select archived, in_alaminut, pinned_to_menu
+    into v_archived, v_in_alam, v_pinned
     from dishes where id = new.dish_id;
 
   if new.source = 'alaminut' then
@@ -197,9 +204,10 @@ begin
         using errcode = 'check_violation';
     end if;
   else -- 'menu'
-    if coalesce(v_archived, true) or not exists (
-      select 1 from daily_menu
-      where serve_date = v_date and dish_id = new.dish_id
+    if coalesce(v_archived, true) or not (
+      exists (select 1 from daily_menu
+              where serve_date = v_date and dish_id = new.dish_id)
+      or coalesce(v_pinned, false)      -- always-offered extras, e.g. Кутия
     ) then
       raise exception 'Това ястие не е в дневното меню за тази дата.'
         using errcode = 'check_violation';
@@ -302,6 +310,32 @@ create policy profiles_self_read on profiles
   for select to authenticated using (id = auth.uid() or is_admin());
 create policy profiles_admin_write on profiles
   for all to authenticated using (is_admin()) with check (is_admin());
+-- A user may edit their own row; the trigger below limits that to display_name.
+create policy profiles_self_update on profiles
+  for update to authenticated
+  using (id = auth.uid()) with check (id = auth.uid());
+
+-- Without this a user could grant themselves admin through their own row.
+create or replace function enforce_profile_self_edit()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if is_admin() then
+    return new;
+  end if;
+  if new.username is distinct from old.username
+     or new.role   is distinct from old.role
+     or new.active is distinct from old.active
+     or new.id     is distinct from old.id then
+    raise exception 'Може да смениш само името си.'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger profiles_self_edit
+  before update on profiles
+  for each row execute function enforce_profile_self_edit();
 
 create policy dishes_read on dishes
   for select to authenticated using (true);

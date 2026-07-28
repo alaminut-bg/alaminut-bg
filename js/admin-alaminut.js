@@ -23,6 +23,8 @@ function draw() {
         '<input type="number" step="0.01" min="0" inputmode="decimal" ' +
           'value="' + Number(it.price).toFixed(2) + '" data-sprice="' + it.id + '">' +
         '<span class="cur">€</span></div>' +
+      '<button class="done-btn' + (it.pinned_to_menu ? ' on' : '') +
+        '" data-spin="' + it.id + '" title="Да се предлага и с менюто">📦</button>' +
       '<button class="kill" data-skill="' + it.id + '">✕</button>' +
     '</div>').join('');
 
@@ -35,7 +37,9 @@ function draw() {
         '+ Добави ново ястие</button></div>' +
     '</div>' +
     '<p class="set-note">Този списък важи за всеки ден. Премахнатите ястия остават ' +
-    'в старите поръчки, само спират да се предлагат.</p>';
+    'в старите поръчки, само спират да се предлагат.<br><br>' +
+    '📦 значи, че ястието се предлага и с менюто всеки ден, без да го добавяш ' +
+    'по дни. Цената е една и съща на двете места — смениш ли я тук, сменя се и в менюто.</p>';
 
   bind();
 }
@@ -55,6 +59,20 @@ function bind() {
       const it = list.find(i => i.id === el.getAttribute('data-sprice'));
       it.price = Number(el.value) || 0;
       clearTimeout(t); t = setTimeout(() => save(it), 700);
+    };
+  });
+
+  // 📦 = also offered alongside the меню on every day, without being placed
+  // on each day by hand. One dish row, so the price stays in sync.
+  document.querySelectorAll('[data-spin]').forEach(el => {
+    el.onclick = async () => {
+      const it = list.find(i => i.id === el.getAttribute('data-spin'));
+      const next = !it.pinned_to_menu;
+      try {
+        await api.upsertDish({ id: it.id, pinned_to_menu: next });
+        it.pinned_to_menu = next;
+        draw(); flashSaved();
+      } catch (e) { setStatus(e.message, 'err'); }
     };
   });
 

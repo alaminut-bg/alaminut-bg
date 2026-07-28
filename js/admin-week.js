@@ -3,7 +3,8 @@ import { eur, esc, todayISO, addDaysISO, formatDayLabel } from './util.js';
 import { ask, flashSaved, setStatus } from './ui.js';
 
 let date = todayISO();
-let dishes = [];        // this day's menu, in order
+let dishes = [];        // this day's own menu, in order
+let pinned = [];        // always-offered extras, read-only here
 let catalog = [];
 let search = '';
 let searchTimer = null;
@@ -14,7 +15,11 @@ export async function renderWeek() {
     const [menu, cat] = await Promise.all([
       api.listDayMenu(date), api.searchCatalog(search),
     ]);
-    dishes = menu;
+    // Pinned extras (Кутия) ride along with every day and are managed in the
+    // Аламинут tab. Keep them out of the editable list, or saving this day
+    // would write them into daily_menu permanently.
+    dishes = menu.filter(d => !d.pinned);
+    pinned = menu.filter(d => d.pinned);
     catalog = cat;
     draw();
     setStatus('');
@@ -63,6 +68,12 @@ function draw(keepFocus) {
         ? rowsHTML
         : '<div class="kempty" style="padding:16px">Празен ден — кухнята не работи. ' +
           'Добави ястие отдолу, за да го отвориш.</div>') +
+      (pinned.length
+        ? '<div class="set-foot" style="padding-top:0">' +
+          '<div class="reorder-hint" style="padding-top:12px">📦 Винаги се предлага: ' +
+          pinned.map(d => esc(d.name) + ' · ' + eur(d.price)).join(', ') +
+          '<br>Управлява се в таб „Аламинут“.</div></div>'
+        : '') +
     '</div>' +
 
     '<div class="set-block">' +

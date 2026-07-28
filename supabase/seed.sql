@@ -24,6 +24,11 @@ begin
     ('Яйца на очи',                 0, true, 11),
     ('Хляб /филия/',                0, true, 12);
 
+  -- Кутия is offered with the меню too, on every day, without being placed on
+  -- each day by hand. One row, so its price is edited in one place.
+  insert into dishes (name, price, in_alaminut, alaminut_pos, pinned_to_menu) values
+    ('Кутия', 0.10, true, 13, true);
+
   -- Menu-only dishes (left column). Таратор is NOT repeated here.
   insert into dishes (name, price, in_alaminut) values
     ('Супа топчета',                                0, false),

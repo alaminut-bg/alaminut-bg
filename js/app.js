@@ -12,7 +12,12 @@ async function route() {
     await renderAdmin();
   } else {
     showScreen('screen-user');
-    const { renderUserScreen } = await import('./orders.js');
+    const [{ renderUserScreen }, settings] = await Promise.all([
+      import('./orders.js'), import('./settings.js'),
+    ]);
+    settings.closeSettings();
+    document.getElementById('uSet').onclick = () =>
+      settings.toggleSettings(renderUserScreen);
     await renderUserScreen();
   }
 }

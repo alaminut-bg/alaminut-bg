@@ -23,22 +23,39 @@ const ITEM_COLS = 'dish_id, source, qty, unit_price';
 
 export async function listAlaminut() {
   const { data, error } = await sb.from('dishes')
-    .select('id, name, price, alaminut_pos')
+    .select('id, name, price, alaminut_pos, pinned_to_menu')
     .eq('in_alaminut', true).eq('archived', false)
     .order('alaminut_pos');
   boom(error, 'Менюто не се зареди.');
   return data ?? [];
 }
 
+/**
+ * That date's menu, plus the always-offered extras (Кутия). Pinned dishes are
+ * appended, never duplicated if the admin also placed one on the day by hand.
+ */
 export async function listDayMenu(date) {
-  const { data, error } = await sb.from('daily_menu')
-    .select('position, dishes(id, name, price, archived)')
-    .eq('serve_date', date).order('position');
-  boom(error, 'Менюто за деня не се зареди.');
-  return (data ?? [])
+  const [day, pinned] = await Promise.all([
+    sb.from('daily_menu')
+      .select('position, dishes(id, name, price, archived)')
+      .eq('serve_date', date).order('position'),
+    sb.from('dishes')
+      .select('id, name, price')
+      .eq('pinned_to_menu', true).eq('archived', false).order('name'),
+  ]);
+  boom(day.error, 'Менюто за деня не се зареди.');
+  boom(pinned.error, 'Менюто за деня не се зареди.');
+
+  const list = (day.data ?? [])
     .filter(r => r.dishes && !r.dishes.archived)
     .map(r => ({ id: r.dishes.id, name: r.dishes.name,
                  price: r.dishes.price, position: r.position }));
+
+  const seen = new Set(list.map(d => d.id));
+  for (const d of pinned.data ?? []) {
+    if (!seen.has(d.id)) list.push({ ...d, position: 999, pinned: true });
+  }
+  return list;
 }
 
 export async function searchCatalog(q) {
@@ -162,8 +179,9 @@ export async function upsertDish(dish) {
   if (dish.price !== undefined) row.price = Number(dish.price) || 0;
   if (dish.in_alaminut !== undefined) row.in_alaminut = !!dish.in_alaminut;
   if (dish.alaminut_pos !== undefined) row.alaminut_pos = Number(dish.alaminut_pos) || 0;
+  if (dish.pinned_to_menu !== undefined) row.pinned_to_menu = !!dish.pinned_to_menu;
 
-  const cols = 'id, name, price, in_alaminut, alaminut_pos';
+  const cols = 'id, name, price, in_alaminut, alaminut_pos, pinned_to_menu';
 
   if (dish.id) {
     const { data, error } = await sb.from('dishes')
@@ -202,6 +220,30 @@ export async function setDayMenu(date, dishIds) {
 }
 
 // ───────────────────────────── admin: people ───────────────────────────
+
+// ───────────────────────────── own account ─────────────────────────────
+// A user may change their own display name and password. The trigger in the
+// database blocks everything else (username, role, active).
+
+export async function updateMyName(displayName) {
+  const name = String(displayName || '').trim();
+  if (name.length < 2) throw new Error('Въведи звание и фамилия.');
+
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error('Няма активен вход.');
+
+  const { error } = await sb.from('profiles')
+    .update({ display_name: name }).eq('id', session.user.id);
+  boom(error, 'Името не се запази.');
+}
+
+export async function changeMyPassword(password) {
+  if (String(password || '').length < 6) {
+    throw new Error('Паролата трябва да е поне 6 знака.');
+  }
+  const { error } = await sb.auth.updateUser({ password });
+  if (error) throw new Error('Паролата не се смени.');
+}
 
 export async function listProfiles() {
   const { data, error } = await sb.from('profiles')

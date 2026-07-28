@@ -1,10 +1,10 @@
-const CACHE = 'alaminut-v1';
+const CACHE = 'alaminut-v2';
 const SHELL = [
   './', './index.html', './app.css', './manifest.json',
   './js/app.js', './js/config.js', './js/supabase.js', './js/util.js',
   './js/ui.js', './js/auth.js', './js/api.js', './js/orders.js',
   './js/admin-day.js', './js/admin-week.js', './js/admin-alaminut.js',
-  './js/admin-people.js',
+  './js/admin-people.js', './js/settings.js',
   './icons/icon-192.svg', './icons/icon-512.svg',
 ];
 
