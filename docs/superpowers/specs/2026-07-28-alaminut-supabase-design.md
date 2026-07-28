@@ -129,9 +129,19 @@ profiles      id → auth.users, username, display_name, role, active
 dishes        id, name, price, in_alaminut, alaminut_pos, archived
 daily_menu    serve_date, dish_id, position
 day_status    serve_date, closed, note
-orders        serve_date, profile_id | guest_name
+orders        serve_date, profile_id | guest_name, completed_at, completed_by
 order_items   order_id, dish_id, source, qty, unit_price
 ```
+
+### `display_name`
+
+A single free-text field holding rank and surname together, exactly as it should appear:
+`лейт. Борисов`. The admin types it whole when creating the account. Rank is not a separate
+field and not a controlled list — a promotion means editing the one string.
+
+`username` remains separate and Latin (`borisov`), because it has to survive being turned into an
+email address for Supabase Auth. The user types the username to log in but only ever sees
+`display_name` in the interface.
 
 ### `source` on `order_items`
 
@@ -178,6 +188,22 @@ and users would read the first as a broken app.
 
 `orders.guest_name` lets an admin add a person who has no account. Exactly one of `profile_id`
 and `guest_name` is set, enforced by a check constraint. Normal users can never create guest rows.
+
+### Completion
+
+The admin marks an order **Приключена** once that person has physically collected their food.
+`completed_at` (null = not collected) plus `completed_by` records who marked it and when.
+
+The flag is **per order**, not per dish: a person's аламинут for day D and their меню for day D
+are handed over together at the same lunch, so a single toggle covers both. It is a toggle, not a
+one-way action — an admin can un-mark a row set by mistake.
+
+Only admins may change it, enforced by a trigger rather than by hiding the button, since a normal
+user's `update` policy would otherwise reach the column. Users see the state read-only on their
+own card.
+
+Completion is independent of the 10:30 lock — an order can be marked collected at any time, well
+after ordering has closed.
 
 ## 5. Schema
 
@@ -257,12 +283,14 @@ create table day_status (
 -- ─────────────────────────── orders & order items ───────────────────────────
 
 create table orders (
-  id         uuid primary key default gen_random_uuid(),
-  serve_date date not null,
-  profile_id uuid references profiles(id) on delete cascade,
-  guest_name text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
+  id           uuid primary key default gen_random_uuid(),
+  serve_date   date not null,
+  profile_id   uuid references profiles(id) on delete cascade,
+  guest_name   text,
+  completed_at timestamptz,                            -- null = not collected yet
+  completed_by uuid references profiles(id) on delete set null,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now(),
   constraint one_owner check (
     (profile_id is not null and guest_name is null) or
     (profile_id is null and guest_name is not null)
@@ -328,6 +356,42 @@ $$;
 create trigger order_items_lock
   before insert or update or delete on order_items
   for each row execute function enforce_lock();
+
+-- ───────────────────────── completion is admin-only ─────────────────────────
+-- The owner's UPDATE policy would otherwise let a user mark their own order
+-- collected. Guard the column itself rather than relying on the UI.
+
+create or replace function enforce_completion()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.completed_at is not null and not is_admin() then
+      raise exception 'Само администратор може да отбележи поръчка като приключена.'
+        using errcode = 'check_violation';
+    end if;
+    return new;
+  end if;
+
+  if (new.completed_at is distinct from old.completed_at
+      or new.completed_by is distinct from old.completed_by)
+     and not is_admin() then
+    raise exception 'Само администратор може да отбележи поръчка като приключена.'
+      using errcode = 'check_violation';
+  end if;
+
+  -- stamp who did it, so the client cannot claim someone else did
+  if new.completed_at is distinct from old.completed_at then
+    new.completed_by := case when new.completed_at is null then null else auth.uid() end;
+  end if;
+
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+create trigger orders_completion
+  before insert or update on orders
+  for each row execute function enforce_completion();
 
 -- ──────────────────────────── row level security ────────────────────────────
 
@@ -463,6 +527,8 @@ A single screen showing only that person's own order.
   `Заключено — след 10:30` state rather than silently failing.
 - If tomorrow is `САНИТАРЕН ДЕН`, that is shown in place of the grid.
 - Own running total at the bottom.
+- A read-only `✓ Приключена` badge once an admin has marked the order collected. The user cannot
+  set or clear it.
 
 A user cannot see or edit anyone else's order, and RLS enforces this rather than the UI.
 
@@ -473,6 +539,9 @@ Tabbed:
 - **Поръчки** — the current full day list with the date bar, every person's order, and the
   kitchen summary **split into separate Аламинут and Меню blocks**, plus the grand total.
   Admins may add, edit and delete any order, including after the lock.
+  Each person's card carries a **Приключена** toggle marking that they collected their food;
+  completed rows dim and sink below the outstanding ones, so what is left to hand out is obvious
+  at a glance. A counter shows `12 / 18 приключени`.
 - **Седмица** — the week builder. Pick a date, add dishes from a searchable catalog, drag to
   reorder, remove, mark the day as САНИТАРЕН ДЕН, or copy the whole day from another date.
   Typing a name not in the catalog creates a new dish permanently.
@@ -517,6 +586,8 @@ connection. The `dirty`-set and retry behaviour in the current file is preserved
   D and D−1, for both sources.
 - **RLS** — with a normal user's JWT, confirm that reading another person's order returns zero
   rows and that writing to `dishes` fails.
+- **Completion guard** — with a normal user's JWT, confirm that setting `completed_at` on their
+  own order is rejected, both on insert and on update.
 - **Edge Function** — confirm a non-admin JWT is rejected for every action.
 - **Manual** — full pass on a real phone: install to home screen, order in both sections, hit
   the lock, verify the admin week builder and the split kitchen summary.
