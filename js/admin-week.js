@@ -1,6 +1,6 @@
 import * as api from './api.js';
 import { eur, esc, todayISO, addDaysISO, formatDayLabel } from './util.js';
-import { ask, flashSaved, setStatus } from './ui.js';
+import { ask, flashSaved, setStatus , showError } from './ui.js';
 
 let date = todayISO();
 let dishes = [];        // this day's own menu, in order
@@ -25,6 +25,7 @@ export async function renderWeek() {
     setStatus('');
   } catch (e) {
     setStatus(e.message, 'err');
+    showError('adminBody', e.message);
   }
 }
 
@@ -205,12 +206,18 @@ async function saveOrder() {
     catalog = await api.searchCatalog(search);
     draw();
     flashSaved();
-  } catch (e) { setStatus(e.message, 'err'); }
+  } catch (e) {
+    setStatus(e.message, 'err');
+    showError('adminBody', e.message);
+  }
 }
 
 async function saveDish(d) {
   try {
     await api.upsertDish({ id: d.id, name: d.name, price: d.price });
     flashSaved();
-  } catch (e) { setStatus(e.message, 'err'); }
+  } catch (e) {
+    setStatus(e.message, 'err');
+    showError('adminBody', e.message);
+  }
 }

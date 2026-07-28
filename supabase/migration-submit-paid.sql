@@ -91,3 +91,7 @@ end;
 $$;
 
 select 'ok' as status;
+
+-- Кутия се предлага само с менюто, не и в аламинут решетката.
+update dishes set in_alaminut = false, pinned_to_menu = true
+where lower(name) like 'кутия%' and not archived;

@@ -1,6 +1,6 @@
 import * as api from './api.js';
 import { esc } from './util.js';
-import { ask, askText, flashSaved, setStatus } from './ui.js';
+import { ask, askText, flashSaved, setStatus , showError } from './ui.js';
 
 let people = [];
 
@@ -10,7 +10,10 @@ export async function renderPeople() {
     people = await api.listProfiles();
     draw();
     setStatus('');
-  } catch (e) { setStatus(e.message, 'err'); }
+  } catch (e) {
+    setStatus(e.message, 'err');
+    showError('adminBody', e.message);
+  }
 }
 
 function draw() {

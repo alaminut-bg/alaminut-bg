@@ -263,3 +263,9 @@ body::before{content:''; position:fixed; inset:-100px; background:var(--bg); z-i
 
 /* comfortable tap targets on a phone */
 button, .tab, .dish, .done-btn, .cat-item{min-height:44px;}
+
+/* two-state toggles in the Аламинут tab: А = alaminut grid, М = with the menu */
+.tog{width:34px; min-height:38px; border:1px solid var(--line); background:var(--panel-2);
+  color:#6d6c5e; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer;
+  font-family:inherit; flex-shrink:0; padding:0;}
+.tog.on{background:var(--khaki); border-color:var(--khaki); color:#191d16;}

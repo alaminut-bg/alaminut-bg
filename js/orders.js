@@ -1,7 +1,7 @@
 import * as api from './api.js';
 import { eur, esc, todayISO, addDaysISO, isLockedClient, isWorkingDay, formatDayLabel }
   from './util.js';
-import { setStatus, flashSaved } from './ui.js';
+import { setStatus, flashSaved , showError } from './ui.js';
 import { currentProfile } from './auth.js';
 
 // One section per source. alaminut is served today, menu is served tomorrow.
@@ -97,6 +97,7 @@ export async function renderUserScreen() {
     setStatus('');
   } catch (e) {
     setStatus(e.message, 'err');
+    showError('userBody', e.message);
   }
 }
 

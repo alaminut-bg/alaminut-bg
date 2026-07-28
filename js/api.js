@@ -59,6 +59,21 @@ export async function listDayMenu(date) {
   return list;
 }
 
+/**
+ * Everything the Аламинут tab manages: dishes offered in the аламинут grid,
+ * plus menu-pinned extras like Кутия that are edited in the same place but
+ * never appear in the аламинут grid itself.
+ */
+export async function listAlaminutAdmin() {
+  const { data, error } = await sb.from('dishes')
+    .select('id, name, price, alaminut_pos, in_alaminut, pinned_to_menu')
+    .or('in_alaminut.eq.true,pinned_to_menu.eq.true')
+    .eq('archived', false)
+    .order('alaminut_pos');
+  boom(error, 'Списъкът не се зареди.');
+  return data ?? [];
+}
+
 /** Official holidays and one-off closures, as a Set of ISO dates. */
 export async function listNonWorking(fromDate, toDate) {
   const { data, error } = await sb.from('non_working')

@@ -1,16 +1,19 @@
 import * as api from './api.js';
 import { eur, esc } from './util.js';
-import { ask, flashSaved, setStatus } from './ui.js';
+import { ask, flashSaved, setStatus , showError } from './ui.js';
 
 let list = [];
 
 export async function renderAlaminut() {
   setStatus('зареждане…');
   try {
-    list = await api.listAlaminut();
+    list = await api.listAlaminutAdmin();
     draw();
     setStatus('');
-  } catch (e) { setStatus(e.message, 'err'); }
+  } catch (e) {
+    setStatus(e.message, 'err');
+    showError('adminBody', e.message);
+  }
 }
 
 function draw() {
@@ -23,8 +26,10 @@ function draw() {
         '<input type="number" step="0.01" min="0" inputmode="decimal" ' +
           'value="' + Number(it.price).toFixed(2) + '" data-sprice="' + it.id + '">' +
         '<span class="cur">€</span></div>' +
-      '<button class="done-btn' + (it.pinned_to_menu ? ' on' : '') +
-        '" data-spin="' + it.id + '" title="Да се предлага и с менюто">📦</button>' +
+      '<button class="tog' + (it.in_alaminut ? ' on' : '') +
+        '" data-sala="' + it.id + '" title="Показва се в аламинут">А</button>' +
+      '<button class="tog' + (it.pinned_to_menu ? ' on' : '') +
+        '" data-spin="' + it.id + '" title="Показва се с менюто">М</button>' +
       '<button class="kill" data-skill="' + it.id + '">✕</button>' +
     '</div>').join('');
 
@@ -38,8 +43,9 @@ function draw() {
     '</div>' +
     '<p class="set-note">Този списък важи за всеки ден. Премахнатите ястия остават ' +
     'в старите поръчки, само спират да се предлагат.<br><br>' +
-    '📦 значи, че ястието се предлага и с менюто всеки ден, без да го добавяш ' +
-    'по дни. Цената е една и съща на двете места — смениш ли я тук, сменя се и в менюто.</p>';
+    '<b>А</b> = показва се в аламинут. <b>М</b> = показва се и с менюто всеки ден, ' +
+    'без да го добавяш по дни. Кутия например е само <b>М</b>. ' +
+    'Цената е една — смениш ли я тук, сменя се навсякъде.</p>';
 
   bind();
 }
@@ -62,19 +68,29 @@ function bind() {
     };
   });
 
-  // 📦 = also offered alongside the меню on every day, without being placed
-  // on each day by hand. One dish row, so the price stays in sync.
-  document.querySelectorAll('[data-spin]').forEach(el => {
-    el.onclick = async () => {
-      const it = list.find(i => i.id === el.getAttribute('data-spin'));
-      const next = !it.pinned_to_menu;
-      try {
-        await api.upsertDish({ id: it.id, pinned_to_menu: next });
-        it.pinned_to_menu = next;
-        draw(); flashSaved();
-      } catch (e) { setStatus(e.message, 'err'); }
-    };
-  });
+  // А = shown in the аламинут grid. М = offered alongside the меню every day.
+  // A dish can be either, both, or — like Кутия — only М. One row either way,
+  // so the price is edited once and applies everywhere.
+  const toggle = (attr, field) =>
+    document.querySelectorAll('[' + attr + ']').forEach(el => {
+      el.onclick = async () => {
+        const it = list.find(i => i.id === el.getAttribute(attr));
+        const next = !it[field];
+        if (!next && !it.in_alaminut && !it.pinned_to_menu) return;
+        if (!next && ((field === 'in_alaminut' && !it.pinned_to_menu) ||
+                      (field === 'pinned_to_menu' && !it.in_alaminut))) {
+          setStatus('Ястието трябва да се предлага поне на едно място.', 'err');
+          return;
+        }
+        try {
+          await api.upsertDish({ id: it.id, [field]: next });
+          it[field] = next;
+          draw(); flashSaved();
+        } catch (e) { setStatus(e.message, 'err'); }
+      };
+    });
+  toggle('data-sala', 'in_alaminut');
+  toggle('data-spin', 'pinned_to_menu');
 
   document.querySelectorAll('[data-skill]').forEach(el => {
     el.onclick = async () => {
@@ -111,7 +127,10 @@ async function save(it) {
   try {
     await api.upsertDish({ id: it.id, name: it.name, price: it.price });
     flashSaved();
-  } catch (e) { setStatus(e.message, 'err'); }
+  } catch (e) {
+    setStatus(e.message, 'err');
+    showError('adminBody', e.message);
+  }
 }
 
 /* ── drag to reorder ─────────────────────────────────────────────────── */
@@ -207,5 +226,8 @@ async function onDragEnd() {
   try {
     await api.saveAlaminutOrder(list.map(i => ({ id: i.id, alaminut_pos: i.alaminut_pos })));
     flashSaved();
-  } catch (e) { setStatus(e.message, 'err'); }
+  } catch (e) {
+    setStatus(e.message, 'err');
+    showError('adminBody', e.message);
+  }
 }

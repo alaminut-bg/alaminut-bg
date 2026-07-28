@@ -1,7 +1,7 @@
 import * as api from './api.js';
 import { sb } from './supabase.js';
 import { eur, esc, todayISO, addDaysISO, formatDayLabel } from './util.js';
-import { ask, askText, setStatus } from './ui.js';
+import { ask, askText, setStatus , showError } from './ui.js';
 
 let date = todayISO();
 let rows = [];          // [{id, who, completed_at, items}]
@@ -25,6 +25,10 @@ export async function renderAdmin() {
       t.classList.add('active');
       unsubscribe();
       setStatus('');
+      // Blank the panel first, so a slow or failing load can never leave the
+      // previous tab's content sitting under the newly selected tab.
+      document.getElementById('adminBody').innerHTML =
+        '<div class="loading">Зареждане…</div>';
       const which = t.getAttribute('data-atab');
       if (which === 'day') return renderDay();
       if (which === 'week') return (await import('./admin-week.js')).renderWeek();
@@ -47,6 +51,7 @@ export async function renderDay() {
     setStatus('');
   } catch (e) {
     setStatus(e.message, 'err');
+    showError('adminBody', e.message);
   }
 }
 
@@ -301,5 +306,8 @@ async function bump(rowId, source, dishId, delta) {
       row.items.push({ dish_id: dishId, source, qty, unit_price: dish.price });
     }
     draw();
-  } catch (e) { setStatus(e.message, 'err'); }
+  } catch (e) {
+    setStatus(e.message, 'err');
+    showError('adminBody', e.message);
+  }
 }

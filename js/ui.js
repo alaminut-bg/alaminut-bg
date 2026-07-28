@@ -68,6 +68,25 @@ export function askText(title, text, value = '', placeholder = '') {
   });
 }
 
+/**
+ * A failed load must replace the panel, never leave the previous tab's
+ * content sitting there looking like it belongs to the tab you just opened.
+ */
+export function showError(containerId, message) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML =
+    '<div class="empty-state">' +
+      '<div class="big">⚠️</div>' +
+      '<div style="color:var(--rust); font-weight:600; margin-bottom:8px">' +
+        'Не се зареди' +
+      '</div>' +
+      '<div>' + String(message ?? '').replace(/[<>]/g, '') + '</div>' +
+      '<button class="btn-wide" style="margin-top:18px" ' +
+        'onclick="location.reload()">Опитай пак</button>' +
+    '</div>';
+}
+
 export function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s =>
     s.classList.toggle('active', s.id === id));
