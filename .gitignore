@@ -9,3 +9,6 @@
 .DS_Store
 Thumbs.db
 node_modules/
+
+# scratch from the planning tooling
+.superpowers/

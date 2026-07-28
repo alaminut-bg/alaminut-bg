@@ -175,6 +175,23 @@ begin
       using errcode = 'check_violation';
   end if;
 
+  -- An UPDATE may only change qty. Letting dish_id or source move would let a
+  -- cheap line be retargeted at an expensive dish while keeping its old
+  -- snapshot price — the same hole unit_price protection exists to close.
+  if tg_op = 'UPDATE' then
+    if new.dish_id    is distinct from old.dish_id
+    or new.source     is distinct from old.source
+    or new.unit_price is distinct from old.unit_price then
+      raise exception 'Може да се променя само количеството.'
+        using errcode = 'check_violation';
+    end if;
+    return new;   -- qty-only edit: nothing left to validate
+  end if;
+
+  -- Everything below is INSERT-only. Re-validating on UPDATE would break a
+  -- plain qty edit on a line whose dish was archived or dropped from the day
+  -- after it was legitimately ordered.
+
   -- rule: the dish must actually be offered under the chosen source
   select archived, in_alaminut into v_archived, v_in_alam
     from dishes where id = new.dish_id;
@@ -195,15 +212,8 @@ begin
   end if;
 
   -- rule: unit_price is a server-side snapshot, never client input
-  if tg_op = 'INSERT' then
-    select price into v_price from dishes where id = new.dish_id;
-    new.unit_price := v_price;
-  elsif tg_op = 'UPDATE' then
-    if new.unit_price is distinct from old.unit_price then
-      raise exception 'Цената на артикул не може да се променя ръчно.'
-        using errcode = 'check_violation';
-    end if;
-  end if;
+  select price into v_price from dishes where id = new.dish_id;
+  new.unit_price := v_price;
 
   return new;
 end;

@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="theme-color" content="#191d16">
+<base target="_top">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#191d16; --panel:#242a20; --panel-2:#2e352a; --line:#3f4838;
+    --khaki:#c2ab73; --khaki-dim:#8a7a51; --rust:#b5522c; --ok:#7ea36a;
+    --text:#eee9da; --dim:#9d9c8b;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html{background:var(--bg); overflow-x:hidden; max-width:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',sans-serif;
+    font-size:16px; padding-bottom:150px; overflow-x:hidden; max-width:100vw;
+    /* минималната височина се задава от JS спрямо екрана на телефона,
+       защото рамката на Apps Script се свива до съдържанието */
+  }
+  body::before{
+    content:''; position:fixed; inset:-100px; background:var(--bg); z-index:-1;
+  }
+  .wrap{max-width:680px; margin:0 auto; padding:0 12px; width:100%; overflow-x:hidden;}
+
+  .tabs{display:flex; gap:6px; margin:14px 0 12px;}
+  .tab{flex:1; min-width:0; padding:12px 8px; border:1px solid var(--line); background:var(--panel); color:var(--dim);
+    border-radius:8px; font-size:15px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:7px; font-family:inherit;}
+  .tab.active{background:var(--khaki); border-color:var(--khaki); color:#191d16;}
+
+  .datebar{display:grid; grid-template-columns:42px 1fr 42px auto; gap:6px; margin-bottom:12px; width:100%;}
+  .datebar > button{background:var(--panel); border:1px solid var(--line); color:var(--text);
+    border-radius:8px; font-size:19px; cursor:pointer; padding:0; min-width:0;}
+  .datebar > button:active{background:var(--panel-2);}
+  .dateshow{background:var(--panel); border:1px solid var(--line); border-radius:8px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; padding:7px 4px; position:relative; cursor:pointer; min-width:0; overflow:hidden;}
+  .dateshow .dow{font-size:11px; color:var(--khaki); text-transform:uppercase; letter-spacing:.1em;}
+  .dateshow .dnum{font-family:'Oswald',sans-serif; font-size:17px; font-weight:600; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; max-width:100%;}
+  .dateshow input{position:absolute; inset:0; opacity:0; width:100%; height:100%; cursor:pointer;}
+  .today-pill{background:var(--khaki-dim); border:none; color:#191d16; font-weight:700; border-radius:8px;
+    padding:0 12px; font-size:14px; cursor:pointer; font-family:inherit; white-space:nowrap; min-width:0;}
+
+  .person{background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-bottom:10px; overflow:hidden;}
+  .person.open{border-color:var(--khaki);}
+  .p-head{display:flex; align-items:center; gap:10px; padding:12px;}
+  .p-num{font-family:'IBM Plex Mono',monospace; color:var(--dim); font-size:13px; width:22px; text-align:center; flex-shrink:0;}
+  .p-main{flex:1; min-width:0; cursor:pointer;}
+  .p-name{background:transparent; border:none; color:var(--text); font-size:16px; font-weight:600; width:100%; padding:2px 0; font-family:inherit;}
+  .p-name::placeholder{color:#6d6c5e;}
+  .p-summary{font-size:12.5px; color:var(--dim); margin-top:3px; line-height:1.35;}
+  .p-summary.empty{color:#6d6c5e; font-style:italic;}
+  .p-right{display:flex; align-items:center; gap:8px; flex-shrink:0;}
+  .p-total{font-family:'IBM Plex Mono',monospace; font-size:15px; font-weight:600; color:var(--khaki); white-space:nowrap;}
+  .p-toggle{width:34px; height:34px; border-radius:8px; border:1px solid var(--line); background:var(--panel-2);
+    color:var(--khaki); font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center;}
+  .person.open .p-toggle{background:var(--khaki); color:#191d16; border-color:var(--khaki);}
+
+  .picker{display:none; padding:2px 10px 12px; border-top:1px solid var(--line);}
+  .person.open .picker{display:block;}
+  .picker-hint{font-size:11.5px; color:var(--dim); padding:9px 2px; text-align:center;}
+  .name-first{
+    text-align:center; padding:20px 14px 16px; color:var(--khaki); font-size:14px; line-height:1.6;
+  }
+  .name-first .arrow{font-size:22px; display:block; margin-bottom:6px;}
+  .name-first .sub{display:block; color:var(--dim); font-size:12px; margin-top:6px;}
+  .p-name.needs{border-bottom:2px solid var(--rust); padding-bottom:3px;}
+  .dish-grid{display:grid; grid-template-columns:1fr 1fr; gap:9px; padding:4px 6px;}
+  .dish{position:relative; border:1px solid var(--line); background:var(--panel-2); border-radius:9px; padding:11px 9px;
+    text-align:left; cursor:pointer; color:var(--text); font-family:inherit; display:flex; flex-direction:column; gap:2px; min-height:56px; justify-content:center;}
+  .dish:active{transform:scale(.97);}
+  .dish .dn{font-size:13.5px; font-weight:500; line-height:1.25;}
+  .dish .dp{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--dim);}
+  .dish.picked{background:var(--khaki); border-color:var(--khaki); color:#191d16;}
+  .dish.picked .dp{color:#3a3520;}
+  .badge{position:absolute; top:-6px; right:-4px; background:var(--rust); color:#fff; font-family:'IBM Plex Mono',monospace;
+    font-size:12px; font-weight:600; min-width:23px; height:23px; border-radius:12px; display:flex; align-items:center;
+    justify-content:center; padding:0 5px; border:2px solid var(--bg);}
+  .minus{position:absolute; top:-6px; left:-4px; background:var(--panel); color:var(--text); border:2px solid var(--line);
+    width:23px; height:23px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:15px; line-height:1; cursor:pointer;}
+  .minus:active{background:var(--rust); color:#fff;}
+  .p-actions{display:flex; gap:8px; margin-top:11px;}
+  .p-actions button{flex:1; padding:10px; border-radius:8px; background:transparent; border:1px solid var(--line);
+    color:var(--dim); font-size:13px; cursor:pointer; font-family:inherit;}
+  .p-actions .del{color:var(--rust); border-color:#5c3222;}
+  .p-actions .del:active{background:var(--rust); color:#fff;}
+
+  .add-person{width:100%; padding:16px; border-radius:10px; border:2px dashed var(--khaki-dim); background:transparent;
+    color:var(--khaki); font-size:16px; font-weight:600; cursor:pointer; font-family:inherit; margin-top:4px;}
+  .add-person:active{background:var(--panel);}
+  .empty-state{text-align:center; padding:34px 20px; color:var(--dim); font-size:14px; line-height:1.6;}
+  .empty-state .big{font-size:34px; margin-bottom:8px;}
+
+  .kitchen{margin-top:18px; background:var(--panel); border:1px solid var(--line); border-radius:10px;}
+  .kitchen h2{font-family:'Oswald',sans-serif; font-size:14px; text-transform:uppercase; letter-spacing:.05em;
+    margin:0; padding:13px 14px; color:var(--khaki); display:flex; justify-content:space-between; cursor:pointer;}
+  .kitchen-body{padding:0 14px 12px; display:none;}
+  .kitchen.open .kitchen-body{display:block;}
+  .kline{display:flex; justify-content:space-between; padding:8px 0; border-top:1px solid var(--line); font-size:14px;}
+  .kline .kq{font-family:'IBM Plex Mono',monospace; font-weight:600; color:var(--khaki);}
+  .kempty{padding:10px 0; color:var(--dim); font-size:13px;}
+
+  .totalbar{position:fixed; left:0; right:0; bottom:0; background:var(--panel-2); border-top:2px solid var(--khaki);
+    padding:11px 14px calc(11px + env(safe-area-inset-bottom)); display:flex; justify-content:space-between; align-items:center; z-index:40;}
+  .totalbar .lbl{font-size:11px; color:var(--khaki); text-transform:uppercase; letter-spacing:.1em;}
+  .totalbar .val{font-family:'Oswald',sans-serif; font-size:24px; font-weight:700;}
+  .totalbar .ppl{font-size:12.5px; color:var(--dim); text-align:right;}
+
+  .set-block{background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-bottom:14px; overflow:hidden;}
+  .set-block h2{font-family:'Oswald',sans-serif; font-size:13px; text-transform:uppercase; letter-spacing:.06em;
+    margin:0; padding:12px 14px; color:var(--khaki); border-bottom:1px solid var(--line);}
+  .set-row{display:flex; align-items:center; gap:9px; padding:9px 12px; border-bottom:1px solid var(--line);}
+  .set-row:last-child{border-bottom:none;}
+  .set-row input[type=text]{flex:1; min-width:0; background:transparent; border:none; border-bottom:1px solid transparent;
+    color:var(--text); font-size:15px; padding:7px 2px; font-family:inherit;}
+  .set-row input[type=text]:focus{border-bottom-color:var(--khaki); outline:none;}
+  .price-wrap{display:flex; align-items:center; gap:3px; flex-shrink:0;}
+  .set-row input[type=number]{width:72px; background:var(--panel-2); border:1px solid var(--line); border-radius:7px;
+    color:var(--khaki); font-family:'IBM Plex Mono',monospace; font-size:15px; text-align:center; padding:9px 4px; font-weight:600;}
+  .price-wrap .cur{color:var(--dim); font-size:14px;}
+  .set-row .kill{background:none; border:none; color:#6d6c5e; font-size:19px; cursor:pointer; padding:4px 6px; flex-shrink:0;}
+  .set-row .grip{
+    color:#6d6c5e; font-size:17px; padding:6px 2px 6px 0; flex-shrink:0; cursor:grab;
+    touch-action:none; user-select:none; line-height:1;
+  }
+  .set-row.dragging{
+    background:var(--panel-2); border-radius:8px; opacity:.96;
+    box-shadow:0 10px 26px rgba(0,0,0,.5); position:relative; z-index:5;
+  }
+  .set-row.dragging .grip{color:var(--khaki); cursor:grabbing;}
+  .drop-line{height:2px; background:var(--khaki); margin:0 12px; border-radius:2px;}
+  .reorder-hint{font-size:11.5px; color:var(--dim); padding:9px 14px 0; text-align:center;}
+  .set-row .kill:active{color:var(--rust);}
+  .set-foot{padding:12px;}
+  .btn-wide{width:100%; padding:14px; border-radius:9px; border:1px solid var(--khaki-dim); background:transparent;
+    color:var(--khaki); font-size:15px; font-weight:600; cursor:pointer; font-family:inherit;}
+  .btn-wide:active{background:var(--panel-2);}
+  .set-note{font-size:12px; color:var(--dim); line-height:1.6; padding:0 4px 24px;}
+
+  .status{font-family:'IBM Plex Mono',monospace; font-size:11px; text-align:center; height:16px; margin-bottom:6px; color:var(--dim);}
+  .status.err{color:var(--rust);}
+  .status.ok{color:var(--ok);}
+  .hidden{display:none !important;}
+
+  /* собствен диалог */
+  .ovl{
+    position:fixed; inset:0; background:rgba(0,0,0,.62); z-index:100;
+    display:flex; align-items:center; justify-content:center; padding:22px;
+  }
+  .ovl.hidden{display:none !important;}
+  .dlg{
+    width:100%; max-width:340px; background:var(--panel); border:1px solid var(--khaki-dim);
+    border-radius:14px; padding:20px 18px 14px; box-shadow:0 18px 50px rgba(0,0,0,.55);
+  }
+  .dlg .dtitle{font-family:'Oswald',sans-serif; font-size:18px; color:var(--text); margin-bottom:6px; letter-spacing:.01em;}
+  .dlg .dtext{font-size:14px; color:var(--dim); line-height:1.55; margin-bottom:18px;}
+  .dlg .dbtns{display:flex; gap:9px;}
+  .dlg button{
+    flex:1; padding:13px 8px; border-radius:9px; font-size:15px; font-weight:600;
+    cursor:pointer; font-family:inherit; border:1px solid var(--line);
+    background:transparent; color:var(--text);
+  }
+  .dlg button.yes{background:var(--rust); border-color:var(--rust); color:#fff;}
+  .dlg button.yes.calm{background:var(--khaki); border-color:var(--khaki); color:#191d16;}
+  .loading{text-align:center; padding:60px 20px; color:var(--dim);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tabs">
+    <button class="tab active" data-tab="orders">📋 Поръчки</button>
+    <button class="tab" data-tab="settings">⚙️ Меню и цени</button>
+  </div>
+
+  <div class="status" id="status">свързване…</div>
+
+  <div id="tab-orders">
+    <div class="datebar">
+      <button id="prevDay">‹</button>
+      <label class="dateshow">
+        <span class="dow" id="dowLabel"></span>
+        <span class="dnum" id="dateLabel"></span>
+        <input type="date" id="dateInput">
+      </label>
+      <button id="nextDay">›</button>
+      <button class="today-pill" id="todayBtn">Днес</button>
+    </div>
+
+    <div id="peopleList"><div class="loading">Зареждане…</div></div>
+    <button class="add-person" id="addPersonBtn">+ Добави човек</button>
+
+    <div class="kitchen open" id="kitchen">
+      <h2 id="kitchenToggle"><span>Обобщение за кухнята</span><span>▾</span></h2>
+      <div class="kitchen-body" id="kitchenBody"></div>
+    </div>
+  </div>
+
+  <div id="tab-settings" class="hidden">
+    <div class="set-block">
+      <h2>Ястия и цени (в евро)</h2>
+      <div class="reorder-hint">Задръж ⠿ и влачи, за да смениш реда на ястията.</div>
+      <div id="menuList"></div>
+      <div class="set-foot">
+        <button class="btn-wide" id="addDishBtn">+ Добави ново ястие</button>
+      </div>
+    </div>
+    <p class="set-note">
+      Всичко се запазва в таблицата в Google Drive. Промените важат за всички дни и за всички,
+      които ползват приложението. Старите поръчки пазят цената, с която са били записани.
+    </p>
+  </div>
+</div>
+
+<div class="ovl hidden" id="ovl">
+  <div class="dlg">
+    <div class="dtitle" id="dlgTitle"></div>
+    <div class="dtext" id="dlgText"></div>
+    <div class="dbtns">
+      <button id="dlgNo">Не</button>
+      <button class="yes" id="dlgYes">Да</button>
+    </div>
+  </div>
+</div>
+
+<div class="totalbar">
+  <div>
+    <div class="lbl">Всичко за деня</div>
+    <div class="val" id="grandTotal">0,00 €</div>
+  </div>
+  <div class="ppl" id="peopleCount">0 души</div>
+</div>
+
+<script>
+const DOW = ['неделя','понеделник','вторник','сряда','четвъртък','петък','събота'];
+const MON = ['януари','февруари','март','април','май','юни','юли','август','септември','октомври','ноември','декември'];
+
+let items = [];
+let rows = [];
+let currentDate = todayStr();
+let openRowId = null;
+let saveTimer = null, saving = false, pending = false;
+let menuTimer = null;
+
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function uid(){ return Math.random().toString(36).slice(2,9); }
+function eur(n){ return (Math.round((n+Number.EPSILON)*100)/100).toFixed(2).replace('.',',')+' €'; }
+function esc(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function setStatus(m, cls){
+  const el = document.getElementById('status');
+  el.textContent = m || '';
+  el.className = 'status' + (cls ? ' '+cls : '');
+}
+
+/* ---- собствен диалог за потвърждение ---- */
+function ask(title, text, yesLabel, calm){
+  return new Promise(resolve=>{
+    const ovl = document.getElementById('ovl');
+    const yes = document.getElementById('dlgYes');
+    const no  = document.getElementById('dlgNo');
+    document.getElementById('dlgTitle').textContent = title;
+    document.getElementById('dlgText').textContent = text;
+    yes.textContent = yesLabel || 'Да';
+    yes.classList.toggle('calm', !!calm);
+    ovl.classList.remove('hidden');
+    function done(v){
+      ovl.classList.add('hidden');
+      yes.onclick = null; no.onclick = null; ovl.onclick = null;
+      resolve(v);
+    }
+    yes.onclick = ()=>done(true);
+    no.onclick  = ()=>done(false);
+    ovl.onclick = e=>{ if(e.target === ovl) done(false); };
+  });
+}
+
+/* ---- мост към Apps Script ---- */
+function call(fn, ...args){
+  return new Promise((resolve, reject)=>{
+    google.script.run
+      .withSuccessHandler(resolve)
+      .withFailureHandler(reject)
+      [fn](...args);
+  });
+}
+
+/* ---- зареждане ---- */
+async function boot(){
+  setStatus('свързване…');
+  try{
+    const data = await call('bootstrap', currentDate);
+    items = data.menu;
+    rows = data.rows;
+    renderOrders();
+    setStatus('');
+  }catch(e){
+    setStatus('Няма връзка. Провери интернета и презареди.', 'err');
+  }
+}
+async function loadDay(date){
+  // първо запази недовършеното за текущия ден, иначе ще отиде в грешна дата
+  clearTimeout(saveTimer);
+  if(dirty.size || saving){
+    setStatus('запазва се…');
+    await flushDirty();
+  }
+  setStatus('зареждане…');
+  openRowId = null;
+  try{
+    rows = await call('getDay', date);
+    renderOrders();
+    setStatus('');
+  }catch(e){
+    setStatus('Не се зареди. Опитай пак.', 'err');
+  }
+}
+
+/* ---- запис: само променените редове ---- */
+const dirty = new Set();
+
+function scheduleSave(rowId){
+  if(rowId) dirty.add(rowId);
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushDirty, 900);
+}
+
+async function flushDirty(){
+  while(saving) await new Promise(r=>setTimeout(r, 200));
+  if(dirty.size === 0) return;
+  saving = true;
+  const batch = Array.from(dirty);
+  dirty.clear();
+  setStatus('запазва се…');
+  let failed = [];
+
+  for(const rid of batch){
+    const row = rows.find(r=>r.id===rid);
+    if(!row) continue;
+    try{
+      const res = await call('saveRow', currentDate, row);
+      if(res && res.seq) row.seq = res.seq;
+    }catch(e){
+      failed.push(rid);
+    }
+  }
+
+  saving = false;
+  if(failed.length){
+    failed.forEach(id=>dirty.add(id));
+    setStatus('⚠ няма връзка — ще опитам пак', 'err');
+    setTimeout(flushDirty, 4000);
+  }else{
+    setStatus('✓ запазено', 'ok');
+    setTimeout(()=>{ const el=document.getElementById('status'); if(el.textContent==='✓ запазено') setStatus(''); }, 1500);
+  }
+  if(dirty.size) scheduleSave();
+}
+
+async function removeRowRemote(rowId){
+  try{ await call('deleteRow', currentDate, rowId); }
+  catch(e){ setStatus('⚠ изтриването не мина — презареди', 'err'); }
+}
+
+/* ---- сверяване с чуждите промени ---- */
+async function syncFromServer(){
+  if(saving || dirty.size) return;          // не пипай, докато има мои незаписани промени
+  if(document.hidden) return;
+  if(!document.getElementById('tab-orders') ||
+     document.getElementById('tab-orders').classList.contains('hidden')) return;
+  try{
+    const fresh = await call('getDay', currentDate);
+    if(saving || dirty.size) return;
+    const mine = JSON.stringify(rows.map(r=>({i:r.id,n:r.name,q:r.qty})));
+    const their = JSON.stringify(fresh.map(r=>({i:r.id,n:r.name,q:r.qty})));
+    if(mine === their) return;
+    const focused = document.activeElement;
+    if(focused && focused.hasAttribute && focused.hasAttribute('data-name')) return; // някой пише име
+    rows = fresh;
+    renderOrders();
+  }catch(e){}
+}
+setInterval(syncFromServer, 15000);
+
+function scheduleMenuSave(){
+  clearTimeout(menuTimer);
+  menuTimer = setTimeout(async ()=>{
+    setStatus('запазва се менюто…');
+    try{
+      await call('saveMenu', items);
+      setStatus('✓ запазено', 'ok');
+      setTimeout(()=>{ const el=document.getElementById('status'); if(el.textContent==='✓ запазено') setStatus(''); }, 1500);
+    }catch(e){ setStatus('⚠ менюто не се запази', 'err'); }
+  }, 900);
+}
+
+/* ---- сметки ---- */
+function rowTotal(row){
+  let t=0;
+  for(const it of items) t += (Number(row.qty[it.id])||0) * (Number(it.price)||0);
+  return t;
+}
+function grandTotal(){ return rows.reduce((s,r)=>s+rowTotal(r), 0); }
+function orderSummary(row){
+  const parts=[];
+  for(const it of items){
+    const q = Number(row.qty[it.id])||0;
+    if(q) parts.push(q>1 ? it.name+' ×'+q : it.name);
+  }
+  return parts;
+}
+
+/* ---- изглед: поръчки ---- */
+function renderDateLabel(){
+  const d = new Date(currentDate+'T12:00:00');
+  document.getElementById('dowLabel').textContent = DOW[d.getDay()];
+  document.getElementById('dateLabel').textContent = d.getDate()+' '+MON[d.getMonth()];
+  document.getElementById('dateInput').value = currentDate;
+}
+
+function dishGrid(row){
+  let dishes = '';
+  items.forEach(it=>{
+    const q = Number(row.qty[it.id])||0;
+    dishes += '<button class="dish '+(q?'picked':'')+'" data-add="'+row.id+'|'+it.id+'">'+
+      (q ? '<span class="badge">'+q+'</span><span class="minus" data-sub="'+row.id+'|'+it.id+'">−</span>' : '')+
+      '<span class="dn">'+esc(it.name)+'</span>'+
+      '<span class="dp">'+(it.price ? eur(it.price) : '—')+'</span></button>';
+  });
+  return dishes;
+}
+
+function pickerInner(row){
+  const named = (row.name||'').trim() !== '';
+  if(!named){
+    return '<div class="name-first">'+
+        '<span class="arrow">☝️</span>'+
+        'Първо напиши фамилията горе.'+
+        '<span class="sub">След това ще се появят ястията.</span>'+
+      '</div>'+
+      '<div class="p-actions">'+
+        '<button class="del" data-del="'+row.id+'">Изтрий реда</button>'+
+      '</div>';
+  }
+  return '<div class="picker-hint">Натисни ястие, за да добавиш. Още веднъж — още едно.</div>'+
+    '<div class="dish-grid">'+dishGrid(row)+'</div>'+
+    '<div class="p-actions">'+
+      '<button class="clear" data-clear="'+row.id+'">Изчисти поръчката</button>'+
+      '<button class="del" data-del="'+row.id+'">Изтрий човека</button>'+
+    '</div>';
+}
+
+function renderOrders(){
+  renderDateLabel();
+  const list = document.getElementById('peopleList');
+  list.innerHTML = '';
+
+  if(rows.length === 0){
+    list.innerHTML = '<div class="empty-state"><div class="big">🍽️</div>'+
+      'Още никой не е записан за този ден.<br>Натисни бутона отдолу, за да добавиш човек.</div>';
+  }
+
+  rows.forEach((row, idx)=>{
+    const isOpen = row.id === openRowId;
+    const parts = orderSummary(row);
+    const card = document.createElement('div');
+    card.className = 'person' + (isOpen ? ' open' : '');
+
+    const named = (row.name||'').trim() !== '';
+    card.innerHTML =
+      '<div class="p-head">'+
+        '<span class="p-num">'+(idx+1)+'</span>'+
+        '<div class="p-main" data-open="'+row.id+'">'+
+          '<input class="p-name'+(named?'':' needs')+'" type="text" placeholder="фамилия" '+
+            'value="'+esc(row.name)+'" data-name="'+row.id+'" autocomplete="off" enterkeyhint="done">'+
+          '<div class="p-summary '+(parts.length?'':'empty')+'">'+
+            (parts.length ? esc(parts.join(', ')) : (named ? 'няма поръчка — натисни, за да избереш' : 'първо напиши фамилията'))+'</div>'+
+        '</div>'+
+        '<div class="p-right">'+
+          '<span class="p-total">'+eur(rowTotal(row))+'</span>'+
+          '<button class="p-toggle" data-open="'+row.id+'">'+(isOpen?'▲':'▼')+'</button>'+
+        '</div>'+
+      '</div>'+
+      '<div class="picker" data-picker="'+row.id+'">'+ pickerInner(row) +'</div>';
+    list.appendChild(card);
+  });
+
+  renderKitchen();
+  renderTotals();
+  bindOrderEvents();
+}
+
+function renderKitchen(){
+  const body = document.getElementById('kitchenBody');
+  const lines = [];
+  items.forEach(it=>{
+    const q = rows.reduce((s,r)=>s+(Number(r.qty[it.id])||0), 0);
+    if(q) lines.push('<div class="kline"><span>'+esc(it.name)+'</span><span class="kq">'+q+' бр.</span></div>');
+  });
+  body.innerHTML = lines.length ? lines.join('') : '<div class="kempty">Още няма поръчки.</div>';
+}
+
+function renderTotals(){
+  document.getElementById('grandTotal').textContent = eur(grandTotal());
+  const n = rows.length;
+  document.getElementById('peopleCount').textContent = n + (n===1 ? ' човек' : ' души');
+}
+
+function bindOrderEvents(){
+  document.querySelectorAll('[data-name]').forEach(el=>{
+    el.oninput = ()=>{
+      const id = el.getAttribute('data-name');
+      const row = rows.find(r=>r.id===id);
+      const wasNamed = (row.name||'').trim() !== '';
+      row.name = el.value;
+      const isNamed = el.value.trim() !== '';
+      el.classList.toggle('needs', !isNamed);
+      if(wasNamed !== isNamed){
+        const box = document.querySelector('[data-picker="'+id+'"]');
+        if(box){ box.innerHTML = pickerInner(row); bindOrderEvents(); el.focus(); }
+        const sum = el.parentElement.querySelector('.p-summary');
+        if(sum && !orderSummary(row).length){
+          sum.textContent = isNamed ? 'няма поръчка — натисни, за да избереш' : 'първо напиши фамилията';
+        }
+      }
+      scheduleSave(id);
+    };
+    el.onclick = e=> e.stopPropagation();
+    el.onkeydown = e=>{ if(e.key === 'Enter'){ e.preventDefault(); el.blur(); } };
+  });
+  document.querySelectorAll('[data-open]').forEach(el=>{
+    el.onclick = e=>{
+      if(e.target.classList.contains('p-name')) return;
+      const id = el.getAttribute('data-open');
+      const row = rows.find(r=>r.id===id);
+      if(row && !(row.name||'').trim()){
+        openRowId = id;
+        renderOrders();
+        const inp = document.querySelector('[data-name="'+id+'"]');
+        if(inp) inp.focus();
+        return;
+      }
+      openRowId = (openRowId === id) ? null : id;
+      renderOrders();
+    };
+  });
+  document.querySelectorAll('[data-add]').forEach(el=>{
+    el.onclick = e=>{
+      if(e.target.hasAttribute('data-sub')) return;
+      const [rid, iid] = el.getAttribute('data-add').split('|');
+      const row = rows.find(r=>r.id===rid);
+      row.qty[iid] = (Number(row.qty[iid])||0) + 1;
+      refreshRow(rid); scheduleSave(rid);
+    };
+  });
+  document.querySelectorAll('[data-sub]').forEach(el=>{
+    el.onclick = e=>{
+      e.stopPropagation();
+      const [rid, iid] = el.getAttribute('data-sub').split('|');
+      const row = rows.find(r=>r.id===rid);
+      const next = (Number(row.qty[iid])||0) - 1;
+      if(next > 0) row.qty[iid] = next; else delete row.qty[iid];
+      refreshRow(rid); scheduleSave(rid);
+    };
+  });
+  document.querySelectorAll('[data-clear]').forEach(el=>{
+    el.onclick = async ()=>{
+      const rid = el.getAttribute('data-clear');
+      const row = rows.find(r=>r.id===rid);
+      if(!Object.keys(row.qty).length) return;
+      const ok = await ask('Изчистване на поръчка',
+        'Всички ястия на „'+(row.name||'този човек')+'“ ще бъдат премахнати. Името остава в списъка.',
+        'Изчисти', true);
+      if(!ok) return;
+      row.qty = {}; refreshRow(rid); scheduleSave(rid);
+    };
+  });
+  document.querySelectorAll('[data-del]').forEach(el=>{
+    el.onclick = async ()=>{
+      const rid = el.getAttribute('data-del');
+      const row = rows.find(r=>r.id===rid);
+      const ok = await ask('Изтриване на човек',
+        '„'+(row.name||'Този ред')+'“ и поръчката му ще изчезнат от този ден.',
+        'Изтрий');
+      if(!ok) return;
+      rows = rows.filter(r=>r.id!==rid);
+      dirty.delete(rid);
+      if(openRowId === rid) openRowId = null;
+      renderOrders();
+      removeRowRemote(rid);
+    };
+  });
+}
+
+function refreshRow(rid){
+  const row = rows.find(r=>r.id===rid);
+  const anchor = document.querySelector('[data-open="'+rid+'"]');
+  const card = anchor ? anchor.closest('.person') : null;
+  if(!card){ renderOrders(); return; }
+
+  card.querySelector('.p-total').textContent = eur(rowTotal(row));
+  const parts = orderSummary(row);
+  const sum = card.querySelector('.p-summary');
+  sum.textContent = parts.length ? parts.join(', ') : 'няма поръчка — натисни, за да избереш';
+  sum.classList.toggle('empty', parts.length===0);
+
+  const dishBtns = card.querySelectorAll('.dish');
+  dishBtns.forEach(btn=>{
+    const iid = btn.getAttribute('data-add').split('|')[1];
+    const q = Number(row.qty[iid])||0;
+    btn.classList.toggle('picked', !!q);
+    const b = btn.querySelector('.badge'); if(b) b.remove();
+    const m = btn.querySelector('.minus'); if(m) m.remove();
+    if(q){
+      btn.insertAdjacentHTML('afterbegin',
+        '<span class="badge">'+q+'</span><span class="minus" data-sub="'+rid+'|'+iid+'">−</span>');
+    }
+  });
+  renderKitchen(); renderTotals(); bindOrderEvents();
+}
+
+
+/* ---- пренареждане на менюто чрез влачене ---- */
+let dragState = null;
+
+function bindReorder(){
+  document.querySelectorAll('[data-grip]').forEach(grip=>{
+    grip.onpointerdown = e=>{
+      e.preventDefault();
+      const id = grip.getAttribute('data-grip');
+      const rowEl = document.querySelector('[data-mrow="'+id+'"]');
+      if(!rowEl) return;
+
+      grip.setPointerCapture(e.pointerId);
+      const rect = rowEl.getBoundingClientRect();
+
+      dragState = {
+        id: id,
+        el: rowEl,
+        grip: grip,
+        pointerId: e.pointerId,
+        offsetY: e.clientY - rect.top,
+        height: rect.height,
+        moved: false,
+        marker: document.createElement('div')
+      };
+      dragState.marker.className = 'drop-line';
+
+      rowEl.classList.add('dragging');
+      rowEl.style.width = rect.width + 'px';
+      if(navigator.vibrate) navigator.vibrate(12);
+
+      grip.onpointermove = onDragMove;
+      grip.onpointerup = onDragEnd;
+      grip.onpointercancel = onDragEnd;
+    };
+  });
+}
+
+function onDragMove(e){
+  if(!dragState) return;
+  e.preventDefault();
+  const d = dragState;
+
+  if(!d.moved){
+    d.moved = true;
+    const parent = d.el.parentElement;
+    d.placeholderIndex = Array.from(parent.children).indexOf(d.el);
+    d.el.style.position = 'fixed';
+    d.el.style.left = d.el.getBoundingClientRect().left + 'px';
+    d.el.style.zIndex = '60';
+    d.el.style.pointerEvents = 'none';
+    parent.insertBefore(d.marker, parent.children[d.placeholderIndex]);
+  }
+
+  d.el.style.top = (e.clientY - d.offsetY) + 'px';
+
+  // намери най-близкия ред и премести маркера
+  const list = document.getElementById('menuList');
+  const siblings = Array.from(list.querySelectorAll('[data-mrow]')).filter(x=>x !== d.el);
+  let placed = false;
+  for(const sib of siblings){
+    const r = sib.getBoundingClientRect();
+    if(e.clientY < r.top + r.height/2){
+      list.insertBefore(d.marker, sib);
+      placed = true;
+      break;
+    }
+  }
+  if(!placed) list.appendChild(d.marker);
+}
+
+function onDragEnd(e){
+  if(!dragState) return;
+  const d = dragState;
+  dragState = null;
+
+  d.grip.onpointermove = null;
+  d.grip.onpointerup = null;
+  d.grip.onpointercancel = null;
+  try{ d.grip.releasePointerCapture(d.pointerId); }catch(err){}
+
+  d.el.classList.remove('dragging');
+  d.el.style.position = '';
+  d.el.style.top = '';
+  d.el.style.left = '';
+  d.el.style.width = '';
+  d.el.style.zIndex = '';
+  d.el.style.pointerEvents = '';
+
+  if(!d.moved){ d.marker.remove(); return; }
+
+  // новата позиция = мястото на маркера
+  const list = document.getElementById('menuList');
+  const kids = Array.from(list.children);
+  let target = kids.indexOf(d.marker);
+  d.marker.remove();
+
+  const from = items.findIndex(i=>i.id === d.id);
+  if(from < 0) return;
+  const moved = items.splice(from, 1)[0];
+  if(from < target) target--;
+  target = Math.max(0, Math.min(target, items.length));
+  items.splice(target, 0, moved);
+
+  renderMenu();
+  scheduleMenuSave();
+  if(navigator.vibrate) navigator.vibrate(8);
+}
+
+/* ---- изглед: настройки ---- */
+function renderMenu(){
+  const list = document.getElementById('menuList');
+  list.innerHTML = '';
+  items.forEach(it=>{
+    const div = document.createElement('div');
+    div.className = 'set-row';
+    div.setAttribute('data-mrow', it.id);
+    div.innerHTML =
+      '<span class="grip" data-grip="'+it.id+'">⠿</span>'+
+      '<input type="text" value="'+esc(it.name)+'" data-sname="'+it.id+'" placeholder="име на ястието">'+
+      '<div class="price-wrap">'+
+        '<input type="number" step="0.01" min="0" inputmode="decimal" value="'+Number(it.price).toFixed(2)+'" data-sprice="'+it.id+'">'+
+        '<span class="cur">€</span>'+
+      '</div>'+
+      '<button class="kill" data-skill="'+it.id+'">✕</button>';
+    list.appendChild(div);
+  });
+
+  list.querySelectorAll('[data-sname]').forEach(el=>{
+    el.oninput = ()=>{ items.find(i=>i.id===el.getAttribute('data-sname')).name = el.value; scheduleMenuSave(); };
+  });
+  list.querySelectorAll('[data-sprice]').forEach(el=>{
+    el.oninput = ()=>{ items.find(i=>i.id===el.getAttribute('data-sprice')).price = Number(el.value)||0; scheduleMenuSave(); };
+  });
+  bindReorder();
+
+  list.querySelectorAll('[data-skill]').forEach(el=>{
+    el.onclick = async ()=>{
+      const id = el.getAttribute('data-skill');
+      const it = items.find(i=>i.id===id);
+      const ok = await ask('Премахване от менюто',
+        '„'+(it.name||'Това ястие')+'“ няма да се предлага повече. Старите записи в таблицата остават.',
+        'Премахни');
+      if(!ok) return;
+      items = items.filter(i=>i.id!==id);
+      rows.forEach(r=>delete r.qty[id]);
+      rows.forEach(r=>dirty.add(r.id));
+      renderMenu(); scheduleMenuSave(); scheduleSave();
+    };
+  });
+}
+
+/* ---- събития ---- */
+document.querySelectorAll('.tab').forEach(t=>{
+  t.onclick = ()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    const to = t.getAttribute('data-tab');
+    document.getElementById('tab-orders').classList.toggle('hidden', to!=='orders');
+    document.getElementById('tab-settings').classList.toggle('hidden', to!=='settings');
+    if(to === 'settings') renderMenu(); else renderOrders();
+  };
+});
+document.getElementById('kitchenToggle').onclick = ()=>{
+  document.getElementById('kitchen').classList.toggle('open');
+};
+document.getElementById('addPersonBtn').onclick = ()=>{
+  const row = { id: uid(), name:'', qty:{}, seq:0 };
+  rows.push(row);
+  openRowId = row.id;
+  renderOrders(); scheduleSave(row.id);
+  const inputs = document.querySelectorAll('[data-name]');
+  if(inputs.length) inputs[inputs.length-1].focus();
+};
+document.getElementById('addDishBtn').onclick = ()=>{
+  items.push({ id: uid(), name:'', price:0 });
+  renderMenu(); scheduleMenuSave();
+  const inputs = document.querySelectorAll('[data-sname]');
+  if(inputs.length) inputs[inputs.length-1].focus();
+};
+document.getElementById('dateInput').onchange = e=>{ currentDate = e.target.value; loadDay(currentDate); };
+document.getElementById('prevDay').onclick = ()=>{
+  const d = new Date(currentDate+'T12:00:00'); d.setDate(d.getDate()-1);
+  currentDate = d.toISOString().slice(0,10); loadDay(currentDate);
+};
+document.getElementById('nextDay').onclick = ()=>{
+  const d = new Date(currentDate+'T12:00:00'); d.setDate(d.getDate()+1);
+  currentDate = d.toISOString().slice(0,10); loadDay(currentDate);
+};
+document.getElementById('todayBtn').onclick = ()=>{ currentDate = todayStr(); loadDay(currentDate); };
+
+window.addEventListener('beforeunload', e=>{
+  if(saving || dirty.size){ e.preventDefault(); e.returnValue = ''; }
+});
+
+/* ---- принуждава рамката на Apps Script да заеме целия екран ---- */
+function fillScreen(){
+  const scr = Math.max(
+    (window.screen && window.screen.availHeight) || 0,
+    (window.screen && window.screen.height) || 0,
+    window.innerHeight || 0,
+    640
+  );
+  // ако потребителят все пак е успял да намали мащаба, компенсирай
+  const scale = (window.visualViewport && window.visualViewport.scale) || 1;
+  const h = Math.ceil(scr / Math.min(scale, 1));
+  document.body.style.minHeight = h + 'px';
+}
+fillScreen();
+window.addEventListener('resize', fillScreen);
+window.addEventListener('orientationchange', ()=>setTimeout(fillScreen, 300));
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', fillScreen);
+  window.visualViewport.addEventListener('scroll', fillScreen);
+}
+
+boot();
+</script>
+</body>
+</html>
