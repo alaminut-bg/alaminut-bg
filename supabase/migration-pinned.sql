@@ -87,11 +87,12 @@ begin
   if is_admin() then
     return new;
   end if;
-  if new.username is distinct from old.username
-     or new.role   is distinct from old.role
+  -- The user owns their display name and their username (the username is
+  -- also their login). Role and active status are not theirs to change.
+  if new.role   is distinct from old.role
      or new.active is distinct from old.active
      or new.id     is distinct from old.id then
-    raise exception 'Може да смениш само името си.'
+    raise exception 'Може да смениш само името и потребителя си.'
       using errcode = 'check_violation';
   end if;
   return new;

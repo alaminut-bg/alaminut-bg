@@ -1,6 +1,6 @@
 import * as api from './api.js';
 import { esc } from './util.js';
-import { setStatus, flashSaved } from './ui.js';
+import { setStatus, flashSaved, ask } from './ui.js';
 import { currentProfile, loadProfile } from './auth.js';
 
 let open = false;
@@ -44,15 +44,20 @@ function draw(onNameChanged) {
     '</div>' +
 
     '<div class="set-block">' +
-      '<h2>Акаунт</h2>' +
-      '<div class="set-row"><span class="pu">Потребител</span>' +
-        '<span style="flex:1"></span>' +
-        '<span class="pu">' + esc(me?.username ?? '') + '</span></div>' +
+      '<h2>Потребителско име</h2>' +
+      '<div class="set-foot">' +
+        '<input class="cat-search" id="stUser" value="' + esc(me?.username ?? '') + '" ' +
+          'placeholder="само латиница (ivanov)" autocapitalize="none" ' +
+          'autocorrect="off" spellcheck="false" autocomplete="off">' +
+        '<button class="btn-wide" id="stUserSave" style="margin-top:10px">' +
+          'Смени потребителя</button>' +
+        '<div class="warn-note">С това име влизаш. След смяна ще влизаш с новото.</div>' +
+      '</div>' +
     '</div>' +
 
     '<button class="btn-wide" id="stBack">← Назад към поръчката</button>' +
-    '<p class="set-note" style="margin-top:14px">Потребителското име не се сменя — ' +
-    'с него влизаш. Ако си забравил паролата си, администратор ти задава нова.</p>';
+    '<p class="set-note" style="margin-top:14px">Ако си забравил паролата си, ' +
+    'администратор ти задава нова.</p>';
 
   bind(onNameChanged);
 }
@@ -72,6 +77,28 @@ function bind(onNameChanged) {
       document.getElementById('uWho').textContent = currentProfile()?.display_name ?? '';
       flashSaved();
       if (onNameChanged) await onNameChanged();
+    } catch (e) {
+      setStatus(e.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  document.getElementById('stUserSave').onclick = async () => {
+    const val = document.getElementById('stUser').value.trim().toLowerCase();
+    const me = currentProfile();
+    if (val === me?.username) return;
+    if (!await ask('Смяна на потребител',
+      `Оттук нататък ще влизаш с „${val}“ вместо „${me?.username}“.`,
+      'Смени', true)) return;
+
+    const btn = document.getElementById('stUserSave');
+    btn.disabled = true;
+    try {
+      await api.updateMyUsername(val);
+      await loadProfile();
+      draw(onNameChanged);
+      flashSaved();
     } catch (e) {
       setStatus(e.message, 'err');
     } finally {

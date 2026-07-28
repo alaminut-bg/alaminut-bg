@@ -59,19 +59,32 @@ export async function listDayMenu(date) {
   return list;
 }
 
-/**
- * Everything the Аламинут tab manages: dishes offered in the аламинут grid,
- * plus menu-pinned extras like Кутия that are edited in the same place but
- * never appear in the аламинут grid itself.
- */
-export async function listAlaminutAdmin() {
+/** Extras offered with the меню every day, e.g. Кутия. */
+export async function listPinned() {
   const { data, error } = await sb.from('dishes')
-    .select('id, name, price, alaminut_pos, in_alaminut, pinned_to_menu')
-    .or('in_alaminut.eq.true,pinned_to_menu.eq.true')
-    .eq('archived', false)
-    .order('alaminut_pos');
-  boom(error, 'Списъкът не се зареди.');
+    .select('id, name, price')
+    .eq('pinned_to_menu', true).eq('archived', false).order('name');
+  boom(error, 'Постоянните ястия не се заредиха.');
   return data ?? [];
+}
+
+/** Reuses an existing catalog dish of the same name rather than duplicating it. */
+export async function addPinned(name, price) {
+  const n = String(name || '').trim();
+  if (!n) throw new Error('Напиши име на ястието.');
+
+  const { data: found, error: findErr } = await sb.from('dishes')
+    .select('id').ilike('name', n).eq('archived', false).limit(1);
+  boom(findErr, 'Ястието не се запази.');
+
+  if (found?.length) {
+    return upsertDish({ id: found[0].id, pinned_to_menu: true, price });
+  }
+  return upsertDish({ name: n, price, pinned_to_menu: true, in_alaminut: false });
+}
+
+export async function unpinDish(id) {
+  return upsertDish({ id, pinned_to_menu: false });
 }
 
 /** Official holidays and one-off closures, as a Set of ISO dates. */
@@ -301,6 +314,40 @@ export async function updateMyName(displayName) {
   const { error } = await sb.from('profiles')
     .update({ display_name: name }).eq('id', session.user.id);
   boom(error, 'Името не се запази.');
+}
+
+/**
+ * The username is also the login, and it is derived into the internal auth
+ * email — so both have to change together or the account can no longer log in.
+ */
+export async function updateMyUsername(username) {
+  const u = String(username || '').trim().toLowerCase();
+  if (!/^[a-z0-9._-]{2,32}$/.test(u)) {
+    throw new Error('Само латиница, цифри, точка, тире или долна черта, 2–32 знака.');
+  }
+
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error('Няма активен вход.');
+
+  const { data: taken, error: findErr } = await sb.from('profiles')
+    .select('id').eq('username', u).neq('id', session.user.id).limit(1);
+  boom(findErr, 'Потребителят не се смени.');
+  if (taken?.length) throw new Error('Това потребителско име е заето.');
+
+  // Auth first: if the profile update failed afterwards the user could still
+  // log in with the new name, whereas the reverse would lock them out.
+  const { error: authErr } = await sb.auth.updateUser({
+    email: `${u}@alaminut.local`,
+  });
+  if (authErr) {
+    throw new Error(/already|registered/i.test(authErr.message)
+      ? 'Това потребителско име е заето.'
+      : 'Потребителят не се смени.');
+  }
+
+  const { error } = await sb.from('profiles')
+    .update({ username: u }).eq('id', session.user.id);
+  boom(error, 'Потребителят не се смени.');
 }
 
 export async function changeMyPassword(password) {

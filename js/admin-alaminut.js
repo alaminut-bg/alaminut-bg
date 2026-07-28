@@ -7,7 +7,7 @@ let list = [];
 export async function renderAlaminut() {
   setStatus('зареждане…');
   try {
-    list = await api.listAlaminutAdmin();
+    list = await api.listAlaminut();
     draw();
     setStatus('');
   } catch (e) {
@@ -26,10 +26,6 @@ function draw() {
         '<input type="number" step="0.01" min="0" inputmode="decimal" ' +
           'value="' + Number(it.price).toFixed(2) + '" data-sprice="' + it.id + '">' +
         '<span class="cur">€</span></div>' +
-      '<button class="tog' + (it.in_alaminut ? ' on' : '') +
-        '" data-sala="' + it.id + '" title="Показва се в аламинут">А</button>' +
-      '<button class="tog' + (it.pinned_to_menu ? ' on' : '') +
-        '" data-spin="' + it.id + '" title="Показва се с менюто">М</button>' +
       '<button class="kill" data-skill="' + it.id + '">✕</button>' +
     '</div>').join('');
 
@@ -42,10 +38,7 @@ function draw() {
         '+ Добави ново ястие</button></div>' +
     '</div>' +
     '<p class="set-note">Този списък важи за всеки ден. Премахнатите ястия остават ' +
-    'в старите поръчки, само спират да се предлагат.<br><br>' +
-    '<b>А</b> = показва се в аламинут. <b>М</b> = показва се и с менюто всеки ден, ' +
-    'без да го добавяш по дни. Кутия например е само <b>М</b>. ' +
-    'Цената е една — смениш ли я тук, сменя се навсякъде.</p>';
+    'в старите поръчки, само спират да се предлагат.</p>';
 
   bind();
 }
@@ -67,30 +60,6 @@ function bind() {
       clearTimeout(t); t = setTimeout(() => save(it), 700);
     };
   });
-
-  // А = shown in the аламинут grid. М = offered alongside the меню every day.
-  // A dish can be either, both, or — like Кутия — only М. One row either way,
-  // so the price is edited once and applies everywhere.
-  const toggle = (attr, field) =>
-    document.querySelectorAll('[' + attr + ']').forEach(el => {
-      el.onclick = async () => {
-        const it = list.find(i => i.id === el.getAttribute(attr));
-        const next = !it[field];
-        if (!next && !it.in_alaminut && !it.pinned_to_menu) return;
-        if (!next && ((field === 'in_alaminut' && !it.pinned_to_menu) ||
-                      (field === 'pinned_to_menu' && !it.in_alaminut))) {
-          setStatus('Ястието трябва да се предлага поне на едно място.', 'err');
-          return;
-        }
-        try {
-          await api.upsertDish({ id: it.id, [field]: next });
-          it[field] = next;
-          draw(); flashSaved();
-        } catch (e) { setStatus(e.message, 'err'); }
-      };
-    });
-  toggle('data-sala', 'in_alaminut');
-  toggle('data-spin', 'pinned_to_menu');
 
   document.querySelectorAll('[data-skill]').forEach(el => {
     el.onclick = async () => {
