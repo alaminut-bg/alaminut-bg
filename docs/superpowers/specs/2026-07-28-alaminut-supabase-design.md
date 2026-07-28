@@ -100,15 +100,27 @@ A `.env` file cannot be read by a browser on a static site. The two Supabase val
 directly into `js/supabase.js`, which is correct — both are public by design:
 
 ```
-SUPABASE_URL       https://<project-ref>.supabase.co
-SUPABASE_ANON_KEY  <anon key from Supabase → Settings → API>
+NEXT_PUBLIC_SUPABASE_URL              https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY  sb_publishable_...
 ```
+
+This project uses Supabase's **new API key format**. `sb_publishable_...` is the direct
+replacement for the legacy `anon` JWT key: it resolves to the same `anon` / `authenticated`
+Postgres roles, so every RLS policy in section 5 applies unchanged. It requires a recent
+supabase-js v2 build, so the CDN import is pinned accordingly:
+
+```js
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+```
+
+The `NEXT_PUBLIC_` prefix is a Next.js build-time convention and has no effect here, since there
+is no build step. The names are kept only so they match what the Supabase dashboard displays.
 
 `.env` is kept, gitignored, purely as a local note of these values and for running a local dev
 server during testing. Nothing in the deployed app reads it.
 
-The `service_role` key is **never** placed in any file in this repository. It lives only in the
-Edge Function's environment inside Supabase.
+The secret counterpart, `sb_secret_...` (formerly `service_role`), is **never** placed in any file
+in this repository. It exists only as a secret inside the Edge Function's environment in Supabase.
 
 ## 4. Data model
 
