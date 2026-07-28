@@ -4,7 +4,6 @@ import { ask, flashSaved, setStatus , showError } from './ui.js';
 
 let date = todayISO();
 let dishes = [];        // this day's own menu, in order
-let pinned = [];        // always-offered extras, read-only here
 let catalog = [];
 let search = '';
 let searchTimer = null;
@@ -12,13 +11,13 @@ let searchTimer = null;
 export async function renderWeek() {
   setStatus('зареждане…');
   try {
-    const [menu, pins, cat] = await Promise.all([
-      api.listDayMenu(date), api.listPinned(), api.searchCatalog(search),
+    const [menu, cat] = await Promise.all([
+      api.listDayMenu(date), api.searchCatalog(search),
     ]);
-    // Pinned extras ride along with every day. Keep them out of the editable
-    // day list, or saving this day would write them into daily_menu for good.
+    // Кутия and friends ride along with every day automatically. Keep them out
+    // of the editable list, or saving this day would write them into
+    // daily_menu for good.
     dishes = menu.filter(d => !d.pinned);
-    pinned = pins;
     catalog = cat;
     draw();
     setStatus('');
@@ -71,30 +70,6 @@ function draw(keepFocus) {
     '</div>' +
 
     '<div class="set-block">' +
-      '<h2>Винаги с менюто</h2>' +
-      (pinned.length
-        ? pinned.map(d =>
-            '<div class="set-row">' +
-              '<input type="text" value="' + esc(d.name) + '" data-pname="' + d.id + '">' +
-              '<div class="price-wrap">' +
-                '<input type="number" step="0.01" min="0" inputmode="decimal" ' +
-                  'value="' + Number(d.price).toFixed(2) + '" data-pprice="' + d.id + '">' +
-                '<span class="cur">€</span></div>' +
-              '<button class="kill" data-punpin="' + d.id + '">✕</button>' +
-            '</div>').join('')
-        : '<div class="kempty" style="padding:16px">Няма постоянни ястия.</div>') +
-      '<div class="set-foot">' +
-        '<div style="display:flex; gap:8px">' +
-          '<input class="cat-search" id="pNew" placeholder="напр. Кутия" ' +
-            'autocomplete="off" style="flex:1">' +
-          '<input class="cat-search" id="pNewPrice" type="number" step="0.01" min="0" ' +
-            'inputmode="decimal" placeholder="0.10" style="width:90px; text-align:center">' +
-        '</div>' +
-        '<button class="btn-wide" id="pAdd" style="margin-top:10px">+ Добави постоянно</button>' +
-      '</div>' +
-    '</div>' +
-
-    '<div class="set-block">' +
       '<h2>Добави от каталога</h2>' +
       '<div class="set-foot">' +
         '<input class="cat-search" id="wSearch" placeholder="търси или напиши ново ястие…" ' +
@@ -115,10 +90,10 @@ function draw(keepFocus) {
       '</div>' +
     '</div>' +
 
-    '<p class="set-note">„Меню за деня“ важи само за избрания ден. ' +
-    '„Винаги с менюто“ се предлага всеки ден, без да го добавяш по дни — там е Кутия.' +
-    '<br><br>Промяната на цена се записва в каталога и важи за всички дни занапред. ' +
-    'Вече направени поръчки пазят цената, с която са записани.</p>';
+    '<p class="set-note">Менюто важи само за избрания ден. Кутия се добавя ' +
+    'автоматично към всяко меню.<br><br>Промяната на цена се записва в каталога ' +
+    'и важи за всички дни занапред. Вече направени поръчки пазят цената, ' +
+    'с която са записани.</p>';
 
   bind();
 
@@ -192,49 +167,6 @@ function bind() {
     let t = null;
     el.oninput = () => {
       const d = dishes.find(x => x.id === el.getAttribute('data-wprice'));
-      d.price = Number(el.value) || 0;
-      clearTimeout(t); t = setTimeout(() => saveDish(d), 700);
-    };
-  });
-
-  // Always-with-the-menu extras (Кутия). One catalog dish, so the price here
-  // is the same price everywhere it appears.
-  document.getElementById('pAdd').onclick = async () => {
-    const name = document.getElementById('pNew').value;
-    const price = Number(document.getElementById('pNewPrice').value) || 0;
-    if (!name.trim()) { setStatus('Напиши име на ястието.', 'err'); return; }
-    try {
-      await api.addPinned(name, price);
-      await renderWeek();
-      flashSaved();
-    } catch (e) { setStatus(e.message, 'err'); }
-  };
-
-  document.querySelectorAll('[data-punpin]').forEach(el => {
-    el.onclick = async () => {
-      const d = pinned.find(x => x.id === el.getAttribute('data-punpin'));
-      if (!await ask('Премахване',
-        `„${d.name}“ няма да се предлага автоматично с менюто.`, 'Премахни')) return;
-      try {
-        await api.unpinDish(d.id);
-        await renderWeek();
-        flashSaved();
-      } catch (e) { setStatus(e.message, 'err'); }
-    };
-  });
-
-  document.querySelectorAll('[data-pname]').forEach(el => {
-    let t = null;
-    el.oninput = () => {
-      const d = pinned.find(x => x.id === el.getAttribute('data-pname'));
-      d.name = el.value;
-      clearTimeout(t); t = setTimeout(() => saveDish(d), 700);
-    };
-  });
-  document.querySelectorAll('[data-pprice]').forEach(el => {
-    let t = null;
-    el.oninput = () => {
-      const d = pinned.find(x => x.id === el.getAttribute('data-pprice'));
       d.price = Number(el.value) || 0;
       clearTimeout(t); t = setTimeout(() => saveDish(d), 700);
     };
