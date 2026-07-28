@@ -32,10 +32,10 @@ function draw() {
     '<div class="set-block">' +
       '<h2>Нов акаунт</h2>' +
       '<div class="set-foot">' +
-        '<input class="cat-search" id="npUser" placeholder="потребител на латиница (borisov)" ' +
+        '<input class="cat-search" id="npUser" placeholder="потребител на латиница (ivanov)" ' +
           'autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off">' +
         '<input class="cat-search" id="npName" style="margin-top:9px" ' +
-          'placeholder="звание и фамилия (лейт. Борисов)" autocomplete="off">' +
+          'placeholder="звание и фамилия (р-к Иванов)" autocomplete="off">' +
         '<input class="cat-search" id="npPass" style="margin-top:9px" type="text" ' +
           'placeholder="парола (поне 6 знака)" autocomplete="off">' +
         '<button class="btn-wide" id="npAdd" style="margin-top:11px">+ Създай акаунт</button>' +

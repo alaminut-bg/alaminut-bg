@@ -45,7 +45,7 @@ $$;
 create table profiles (
   id           uuid primary key references auth.users(id) on delete cascade,
   username     text not null unique check (username ~ '^[a-z0-9._-]{2,32}$'),
-  display_name text not null,            -- rank + surname, e.g. 'лейт. Борисов'
+  display_name text not null,            -- rank + surname, e.g. 'р-к Иванов'
   role         text not null default 'user' check (role in ('admin','user')),
   active       boolean not null default true,
   created_at   timestamptz not null default now()

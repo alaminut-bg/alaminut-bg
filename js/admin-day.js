@@ -100,8 +100,7 @@ function personHTML(row, idx) {
     '<div class="p-head">' +
       '<span class="p-num">' + (idx + 1) + '</span>' +
       '<div class="p-main" data-open="' + row.id + '">' +
-        '<div class="p-name">' + esc(row.who) +
-          (row.guest_name ? ' <span class="pu">(гост)</span>' : '') + '</div>' +
+        '<div class="p-name">' + esc(row.who) + '</div>' +
         '<div class="p-summary' + (row.items.length ? '' : ' empty') + '">' +
           (row.items.length ? esc(summary(row)) : 'няма поръчка') + '</div>' +
       '</div>' +
@@ -251,7 +250,7 @@ function bind() {
   document.getElementById('aAddGuest').onclick = async () => {
     const name = await askText('Добави човек',
       'Звание и фамилия. След това отвори реда и избери аламинут или меню.',
-      '', 'напр. лейт. Борисов');
+      '', 'напр. р-к Иванов');
     if (!name) return;
     try {
       const id = await api.ensureOrder(date, null, name);

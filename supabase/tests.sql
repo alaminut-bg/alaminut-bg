@@ -20,7 +20,7 @@ on conflict (id) do nothing;
 
 insert into profiles (id, username, display_name, role) values
   ('aaaaaaaa-0000-0000-0000-000000000001','tadmin','кап. Тестов','admin'),
-  ('bbbbbbbb-0000-0000-0000-000000000002','tuser','лейт. Борисов','user'),
+  ('bbbbbbbb-0000-0000-0000-000000000002','tuser','р-к Иванов','user'),
   ('cccccccc-0000-0000-0000-000000000003','tother','сер. Друг','user');
 
 insert into dishes (id, name, price, in_alaminut) values

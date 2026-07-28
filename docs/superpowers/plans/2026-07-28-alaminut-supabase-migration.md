@@ -122,7 +122,7 @@ $$;
 create table profiles (
   id           uuid primary key references auth.users(id) on delete cascade,
   username     text not null unique check (username ~ '^[a-z0-9._-]{2,32}$'),
-  display_name text not null,            -- rank + surname, e.g. 'лейт. Борисов'
+  display_name text not null,            -- rank + surname, e.g. 'р-к Иванов'
   role         text not null default 'user' check (role in ('admin','user')),
   active       boolean not null default true,
   created_at   timestamptz not null default now()
@@ -371,7 +371,7 @@ on conflict (id) do nothing;
 
 insert into profiles (id, username, display_name, role) values
   ('aaaaaaaa-0000-0000-0000-000000000001','tadmin','кап. Тестов','admin'),
-  ('bbbbbbbb-0000-0000-0000-000000000002','tuser','лейт. Борисов','user'),
+  ('bbbbbbbb-0000-0000-0000-000000000002','tuser','р-к Иванов','user'),
   ('cccccccc-0000-0000-0000-000000000003','tother','сер. Друг','user');
 
 insert into dishes (id, name, price, in_alaminut) values
@@ -1933,7 +1933,7 @@ As admin, in the browser console:
 ```js
 const api = await import('/js/api.js');
 await api.adminUsers('create', {
-  username: 'borisov', display_name: 'лейт. Борисов',
+  username: 'ivanov', display_name: 'р-к Иванов',
   password: 'test1234', role: 'user',
 });
 ```
@@ -1949,7 +1949,7 @@ const cat = await api.searchCatalog('');
 await api.setDayMenu(addDaysISO(todayISO(), 1), cat.slice(12, 16).map(d => d.id));
 ```
 
-Sign out, then log in as `borisov` / `test1234`.
+Sign out, then log in as `ivanov` / `test1234`.
 
 Expected:
 1. Two sections: `Днес — аламинут` with 12 dishes, `Утре — меню` with 4.
@@ -1960,14 +1960,14 @@ Expected:
 
 - [ ] **Step 4: Verify a user cannot reach another user's order**
 
-Logged in as `borisov`, in the console:
+Logged in as `ivanov`, in the console:
 
 ```js
 const api = await import('/js/api.js');
 console.log('visible orders today:', (await api.getDay((await import('/js/util.js')).todayISO())).length);
 ```
 
-Expected: `0` or `1` — never more than Борисов's own row. RLS filters the rest server-side.
+Expected: `0` or `1` — never more than Иванов's own row. RLS filters the rest server-side.
 
 - [ ] **Step 5: Verify a user cannot mark themselves completed**
 
@@ -2289,14 +2289,14 @@ In `js/app.js`, replace the admin branch of `route()`:
 Log in as `admin`. Expected on the `Поръчки` tab:
 
 1. The date bar shows today; `‹` and `›` move a day; `Днес` returns.
-2. Борисов's order from Task 7 is listed with his `display_name`, his dishes and his total.
+2. Иванов's order from Task 7 is listed with his `display_name`, his dishes and his total.
 3. Tapping the card opens a picker with **two** labelled grids: `Аламинут` (12 dishes) and `Меню` (4, or `Няма меню за този ден` on a day with no menu).
 4. Adding a dish as admin works **even after 10:30** — the trigger exempts admins.
 5. `Обобщение за кухнята` shows two separate blocks, `Аламинут` and `Меню`, each counting only its own `source`.
 
 - [ ] **Step 4: Verify Приключена**
 
-1. Press `Приключи` on Борисов's row. Expected: the button turns green with `✓`, the card dims, it sinks below any outstanding rows, and the counter reads `1 / 1 приключени`.
+1. Press `Приключи` on Иванов's row. Expected: the button turns green with `✓`, the card dims, it sinks below any outstanding rows, and the counter reads `1 / 1 приключени`.
 2. Press it again. Expected: it reverts — it is a toggle, not one-way.
 3. Confirm the actor was stamped server-side:
 
@@ -2612,7 +2612,7 @@ Set the price back to 2.50 afterwards.
 - [ ] **Step 5: Verify САНИТАРЕН ДЕН and copy**
 
 1. Navigate to a Thursday and press `🚫 Отбележи САНИТАРЕН ДЕН`. Expected: the dish list is replaced by the closed notice and the catalog block disappears.
-2. Log in as `borisov` on a day where tomorrow is that Thursday. Expected: the `Утре — меню` section reads `🚫 САНИТАРЕН ДЕН — няма меню.` rather than an empty grid.
+2. Log in as `ivanov` on a day where tomorrow is that Thursday. Expected: the `Утре — меню` section reads `🚫 САНИТАРЕН ДЕН — няма меню.` rather than an empty grid.
 3. Back as admin, on an empty day, pick a date in `Копирай от друг ден` and press `⧉ Копирай тук`. Expected: after confirming, that day's dishes appear in the same order.
 
 - [ ] **Step 6: Commit**
@@ -2934,10 +2934,10 @@ function draw() {
     '<div class="set-block">' +
       '<h2>Нов акаунт</h2>' +
       '<div class="set-foot">' +
-        '<input class="cat-search" id="npUser" placeholder="потребител (латиница, напр. borisov)" ' +
+        '<input class="cat-search" id="npUser" placeholder="потребител (латиница, напр. ivanov)" ' +
           'autocapitalize="none" autocorrect="off" autocomplete="off">' +
         '<input class="cat-search" id="npName" style="margin-top:9px" ' +
-          'placeholder="звание и фамилия (напр. лейт. Борисов)">' +
+          'placeholder="звание и фамилия (напр. р-к Иванов)">' +
         '<input class="cat-search" id="npPass" style="margin-top:9px" type="text" ' +
           'placeholder="парола (поне 6 знака)">' +
         '<button class="btn-wide" id="npAdd" style="margin-top:11px">+ Създай акаунт</button>' +
@@ -3300,7 +3300,7 @@ On the live URL:
 
 1. Log in as `admin`. Expected: the four admin tabs.
 2. Check DevTools → **Console**. Expected: no CORS errors and no failed module imports. A `manifest` warning about icon purpose is harmless.
-3. Log in as `borisov` on a phone and place an order. Expected: it appears in the admin day view.
+3. Log in as `ivanov` on a phone and place an order. Expected: it appears in the admin day view.
 4. Install to the home screen from the live URL. Expected: fullscreen, correct icon.
 
 - [ ] **Step 6: Confirm no secret leaked**
@@ -3326,7 +3326,7 @@ Expected: `env never committed`.
 delete from auth.users where email in ('petrov@alaminut.local');
 ```
 
-Keep `borisov` if it is a real person; delete it the same way if not.
+Keep `ivanov` if it is a real person; delete it the same way if not.
 
 - [ ] **Step 8: Commit**
 

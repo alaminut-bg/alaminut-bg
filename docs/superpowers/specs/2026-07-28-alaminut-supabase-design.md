@@ -136,10 +136,10 @@ order_items   order_id, dish_id, source, qty, unit_price
 ### `display_name`
 
 A single free-text field holding rank and surname together, exactly as it should appear:
-`лейт. Борисов`. The admin types it whole when creating the account. Rank is not a separate
+`р-к Иванов`. The admin types it whole when creating the account. Rank is not a separate
 field and not a controlled list — a promotion means editing the one string.
 
-`username` remains separate and Latin (`borisov`), because it has to survive being turned into an
+`username` remains separate and Latin (`ivanov`), because it has to survive being turned into an
 email address for Supabase Auth. The user types the username to log in but only ever sees
 `display_name` in the interface.
 
