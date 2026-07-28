@@ -2,6 +2,12 @@
 -- Безопасно е да се пусне повече от веднъж.
 
 -- Колко дни назад се пазят поръчките. Смени числото тук, ако решиш друго.
+-- Тригерите пазят поръчките от изтриване след 10:30 и допускат само админ.
+-- Чистенето обаче не е потребителско действие — то върви от cron или от SQL
+-- Editor, където auth.uid() е NULL и is_admin() връща false. Затова тук
+-- тригерите се спират за момента. Всичко е в една транзакция: ако нещо
+-- гръмне, и изтриването, и спирането се отменят заедно.
+
 create or replace function purge_old_data(p_keep_days integer default 31)
 returns table (deleted_orders integer, deleted_menu_days integer)
 language plpgsql security definer set search_path = public as $$
@@ -10,9 +16,15 @@ declare
   v_orders integer;
   v_menu   integer;
 begin
+  alter table order_items disable trigger order_items_lock;
+  alter table orders      disable trigger orders_lock;
+
   -- order_items падат заедно с поръчката (on delete cascade)
   delete from orders where serve_date < v_cutoff;
   get diagnostics v_orders = row_count;
+
+  alter table orders      enable trigger orders_lock;
+  alter table order_items enable trigger order_items_lock;
 
   delete from daily_menu where serve_date < v_cutoff;
   get diagnostics v_menu = row_count;
