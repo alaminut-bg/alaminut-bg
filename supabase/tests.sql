@@ -293,10 +293,10 @@ do $$ begin
          'FAIL: admin must be able to order a non-alaminut dish under alaminut and set its own price';
 end $$;
 
--- ══════════════════ 8. a closed (санитарен) day rejects orders ══════════════════
+-- ══════════════ 8. a day with no menu is a non-working day ══════════════
+-- 2026-08-10 deliberately has no daily_menu rows, so the kitchen is shut and
+-- a normal user must not be able to order anything — not even аламинут.
 -- Owned by bbbbbbbb for the same isolation-safety reason as section 5.
-
-insert into day_status (serve_date, closed) values (date '2026-08-10', true);
 
 insert into orders (id, serve_date, profile_id) values
   ('eeeeeeee-0000-0000-0000-000000000005', date '2026-08-10',
@@ -309,7 +309,7 @@ do $$ begin
     insert into order_items (order_id, dish_id, source, qty, unit_price) values
       ('eeeeeeee-0000-0000-0000-000000000005',
        'dddddddd-0000-0000-0000-000000000001','alaminut',1,3.50);
-    raise exception 'FAIL: user ordered on a closed (санитарен) day';
+    raise exception 'FAIL: user ordered on a day with no menu';
   exception when check_violation then
     null;  -- expected
   end;
@@ -324,7 +324,7 @@ insert into order_items (order_id, dish_id, source, qty, unit_price) values
 do $$ begin
   assert (select count(*) from order_items
           where order_id = 'eeeeeeee-0000-0000-0000-000000000005') = 1,
-         'FAIL: admin must be able to order on a closed day';
+         'FAIL: admin must be able to order on a non-working day';
 end $$;
 
 -- ══════════════════════ 9. RLS isolation ══════════════════════

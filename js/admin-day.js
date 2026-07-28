@@ -7,7 +7,6 @@ let date = todayISO();
 let rows = [];          // [{id, who, completed_at, items}]
 let ala = [];           // alaminut dishes
 let menu = [];          // this day's menu dishes
-let closed = false;
 let openId = null;
 let channel = null;
 let softTimer = null;
@@ -39,10 +38,10 @@ export async function renderAdmin() {
 export async function renderDay() {
   setStatus('зареждане…');
   try {
-    const [r, a, m, st] = await Promise.all([
-      api.getDay(date), api.listAlaminut(), api.listDayMenu(date), api.getDayStatus(date),
+    const [r, a, m] = await Promise.all([
+      api.getDay(date), api.listAlaminut(), api.listDayMenu(date),
     ]);
-    rows = r; ala = a; menu = m; closed = !!st?.closed;
+    rows = r; ala = a; menu = m;
     draw();
     subscribe();
     setStatus('');
@@ -158,14 +157,16 @@ function draw() {
       '<button id="aNext">›</button>' +
       '<button class="today-pill" id="aToday">Днес</button>' +
     '</div>' +
-    (closed ? '<div class="locked-note">🚫 САНИТАРЕН ДЕН</div>' : '') +
+    (menu.length ? '' :
+      '<div class="locked-note">Няма въведено меню за този ден. ' +
+      'Добави го в таб „Седмица“, ако кухнята работи.</div>') +
     '<div class="section-head"><span>Поръчки</span>' +
       '<span class="done-count">' + done + ' / ' + rows.length + ' приключени</span></div>' +
     (ordered.length
       ? ordered.map(personHTML).join('')
       : '<div class="empty-state"><div class="big">🍽️</div>' +
         'Още никой не е записан за този ден.</div>') +
-    '<button class="add-person" id="aAddGuest">+ Добави гост</button>' +
+    '<button class="add-person" id="aAddGuest">+ Добави човек</button>' +
     kitchenHTML() +
     '<div class="totalbar"><div><div class="lbl">Всичко за деня</div>' +
       '<div class="val">' + eur(grand()) + '</div></div>' +
@@ -248,10 +249,13 @@ function bind() {
   });
 
   document.getElementById('aAddGuest').onclick = async () => {
-    const name = await askText('Нов гост', 'Звание и фамилия:', '', 'напр. лейт. Борисов');
+    const name = await askText('Добави човек',
+      'Звание и фамилия. След това отвори реда и избери аламинут или меню.',
+      '', 'напр. лейт. Борисов');
     if (!name) return;
     try {
-      await api.ensureOrder(date, null, name);
+      const id = await api.ensureOrder(date, null, name);
+      openId = id;                     // open it straight away, ready to order
       await renderDay();
     } catch (e) { setStatus(e.message, 'err'); }
   };

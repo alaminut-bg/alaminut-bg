@@ -7,7 +7,7 @@
 drop table    if exists order_items cascade;
 drop table    if exists orders      cascade;
 drop table    if exists daily_menu  cascade;
-drop table    if exists day_status  cascade;
+drop table    if exists day_status  cascade;   -- removed feature; drops the old table
 drop table    if exists dishes      cascade;
 drop table    if exists profiles    cascade;
 drop function if exists is_admin() cascade;
@@ -86,11 +86,9 @@ create table daily_menu (
 
 create index daily_menu_date_idx on daily_menu (serve_date, position);
 
-create table day_status (
-  serve_date date primary key,
-  closed     boolean not null default false,
-  note       text
-);
+-- No day_status table. A date with no daily_menu rows is simply a day the
+-- kitchen does not work — weekends and the occasional weekday. The admin
+-- closes a day by not building one, which is what already happens.
 
 -- ─────────────────────────── orders & order items ───────────────────────────
 
@@ -149,7 +147,6 @@ declare
   v_price    numeric(6,2);
   v_in_alam  boolean;
   v_archived boolean;
-  v_closed   boolean;
 begin
   v_row := coalesce(new, old);
   select serve_date into v_date from orders where id = v_row.order_id;
@@ -168,10 +165,9 @@ begin
     return v_row;
   end if;
 
-  -- rule: no orders on a санитарен ден (day_status.closed)
-  select closed into v_closed from day_status where serve_date = v_date;
-  if coalesce(v_closed, false) then
-    raise exception 'Не може да се поръчва за санитарен ден.'
+  -- rule: a date with no menu is a day the kitchen does not work
+  if not exists (select 1 from daily_menu where serve_date = v_date) then
+    raise exception 'Кухнята не работи на тази дата.'
       using errcode = 'check_violation';
   end if;
 
@@ -300,7 +296,6 @@ create trigger orders_completion
 alter table profiles    enable row level security;
 alter table dishes      enable row level security;
 alter table daily_menu  enable row level security;
-alter table day_status  enable row level security;
 alter table orders      enable row level security;
 alter table order_items enable row level security;
 
@@ -317,11 +312,6 @@ create policy dishes_admin_write on dishes
 create policy daily_menu_read on daily_menu
   for select to authenticated using (true);
 create policy daily_menu_admin_write on daily_menu
-  for all to authenticated using (is_admin()) with check (is_admin());
-
-create policy day_status_read on day_status
-  for select to authenticated using (true);
-create policy day_status_admin_write on day_status
   for all to authenticated using (is_admin()) with check (is_admin());
 
 create policy orders_own on orders
@@ -345,7 +335,7 @@ create policy order_items_own on order_items
 
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on
-  profiles, dishes, daily_menu, day_status, orders, order_items
+  profiles, dishes, daily_menu, orders, order_items
   to authenticated;
 
 -- ─────────────────────────────── realtime ───────────────────────────────────

@@ -4,9 +4,10 @@ import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 /** Turns a Postgres error into a message worth showing a user. */
 function boom(error, fallback) {
   if (!error) return;
+  console.error('[alaminut]', error);   // the Bulgarian text below hides the cause
   const m = String(error.message || '');
   if (m.includes('10:30')) throw new Error('Поръчките са заключени след 10:30.');
-  if (m.includes('санитарен')) throw new Error('Не може да се поръчва за санитарен ден.');
+  if (m.includes('не работи')) throw new Error('Кухнята не работи на тази дата.');
   if (m.includes('не е налично') || m.includes('не е в дневното'))
     throw new Error('Това ястие не се предлага за този ден.');
   if (m.includes('администратор')) throw new Error('Само администратор може да направи това.');
@@ -41,13 +42,6 @@ export async function listDayMenu(date) {
                  price: r.dishes.price, position: r.position }));
 }
 
-export async function getDayStatus(date) {
-  const { data, error } = await sb.from('day_status')
-    .select('serve_date, closed, note').eq('serve_date', date).maybeSingle();
-  boom(error, 'Състоянието на деня не се зареди.');
-  return data;
-}
-
 export async function searchCatalog(q) {
   let query = sb.from('dishes')
     .select('id, name, price, in_alaminut')
@@ -73,9 +67,12 @@ export async function getMyOrder(date) {
 }
 
 export async function getDay(date) {
+  // orders references profiles twice (profile_id and completed_by), so the
+  // embed must name the foreign key or PostgREST refuses as ambiguous.
   const { data, error } = await sb.from('orders')
     .select(`id, profile_id, guest_name, completed_at, created_at,
-             profiles(display_name), order_items(${ITEM_COLS})`)
+             profiles!orders_profile_id_fkey(display_name),
+             order_items(${ITEM_COLS})`)
     .eq('serve_date', date).order('created_at');
   boom(error, 'Денят не се зареди.');
   return (data ?? []).map(o => ({
@@ -205,13 +202,6 @@ export async function setDayMenu(date, dishIds) {
   boom(error, 'Менюто не се запази.');
 }
 
-export async function setDayClosed(date, closed, note) {
-  const { error } = await sb.from('day_status')
-    .upsert({ serve_date: date, closed, note: note ?? null },
-            { onConflict: 'serve_date' });
-  boom(error, 'Състоянието не се запази.');
-}
-
 // ───────────────────────────── admin: people ───────────────────────────
 
 export async function listProfiles() {
@@ -225,16 +215,29 @@ export async function adminUsers(action, payload = {}) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) throw new Error('Няма активен вход.');
 
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-users`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify({ action, ...payload }),
-  });
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/functions/v1/admin-users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ action, ...payload }),
+    });
+  } catch (e) {
+    // fetch itself threw: the function is not deployed, or its CORS preflight
+    // was rejected by the gateway (usually "Verify JWT" being on).
+    console.error('[alaminut] admin-users fetch failed', e);
+    throw new Error('Функцията admin-users не отговаря. Провери дали е публикувана ' +
+                    'и дали "Verify JWT" е изключено.');
+  }
+
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || 'Действието не мина.');
+  if (!res.ok) {
+    console.error('[alaminut] admin-users', res.status, body);
+    throw new Error(body.error || `Действието не мина (${res.status}).`);
+  }
   return body;
 }

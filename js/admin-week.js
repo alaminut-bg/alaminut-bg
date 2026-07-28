@@ -4,8 +4,6 @@ import { ask, flashSaved, setStatus } from './ui.js';
 
 let date = todayISO();
 let dishes = [];        // this day's menu, in order
-let closed = false;
-let note = null;
 let catalog = [];
 let search = '';
 let searchTimer = null;
@@ -13,12 +11,10 @@ let searchTimer = null;
 export async function renderWeek() {
   setStatus('зареждане…');
   try {
-    const [menu, status, cat] = await Promise.all([
-      api.listDayMenu(date), api.getDayStatus(date), api.searchCatalog(search),
+    const [menu, cat] = await Promise.all([
+      api.listDayMenu(date), api.searchCatalog(search),
     ]);
     dishes = menu;
-    closed = !!status?.closed;
-    note = status?.note ?? null;
     catalog = cat;
     draw();
     setStatus('');
@@ -63,16 +59,12 @@ function draw(keepFocus) {
 
     '<div class="set-block">' +
       '<h2>Меню за деня</h2>' +
-      (closed
-        ? '<div class="locked-note">🚫 ' + esc(note || 'САНИТАРЕН ДЕН') + '</div>'
-        : (dishes.length
-            ? rowsHTML
-            : '<div class="kempty" style="padding:16px">Още няма ястия за този ден.</div>')) +
-      '<div class="set-foot"><button class="btn-wide" id="wClosed">' +
-        (closed ? '↩ Отмени санитарен ден' : '🚫 Отбележи САНИТАРЕН ДЕН') + '</button></div>' +
+      (dishes.length
+        ? rowsHTML
+        : '<div class="kempty" style="padding:16px">Празен ден — кухнята не работи. ' +
+          'Добави ястие отдолу, за да го отвориш.</div>') +
     '</div>' +
 
-    (closed ? '' :
     '<div class="set-block">' +
       '<h2>Добави от каталога</h2>' +
       '<div class="set-foot">' +
@@ -84,7 +76,7 @@ function draw(keepFocus) {
             esc(search.trim()) + '“</button>'
           : '') +
       '</div>' +
-    '</div>') +
+    '</div>' +
 
     '<div class="set-block">' +
       '<h2>Копирай от друг ден</h2>' +
@@ -110,19 +102,6 @@ function bind() {
   document.getElementById('wNext').onclick = () => { date = addDaysISO(date, 1); renderWeek(); };
   document.getElementById('wToday').onclick = () => { date = todayISO(); renderWeek(); };
   document.getElementById('wDate').onchange = e => { date = e.target.value; renderWeek(); };
-
-  document.getElementById('wClosed').onclick = async () => {
-    if (!closed && dishes.length) {
-      if (!await ask('Санитарен ден',
-        'Този ден ще бъде затворен за поръчки. Ястията в менюто остават записани.',
-        'Затвори деня', true)) return;
-    }
-    try {
-      await api.setDayClosed(date, !closed, !closed ? 'САНИТАРЕН ДЕН' : null);
-      await renderWeek();
-      flashSaved();
-    } catch (e) { setStatus(e.message, 'err'); }
-  };
 
   const s = document.getElementById('wSearch');
   if (s) s.oninput = () => {
