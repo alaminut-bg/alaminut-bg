@@ -1,9 +1,9 @@
 -- Аламинут — full schema. Safe to re-run: drops first.
 -- Run in Supabase → SQL Editor.
 
-drop trigger  if exists orders_completion  on orders;
-drop trigger  if exists orders_lock        on orders;
-drop trigger  if exists order_items_lock   on order_items;
+-- No `drop trigger ... on <table>` here: IF EXISTS covers the trigger but NOT
+-- the relation, so those statements error on a first-ever run when the table
+-- does not exist yet. Dropping the tables removes their triggers anyway.
 drop table    if exists order_items cascade;
 drop table    if exists orders      cascade;
 drop table    if exists daily_menu  cascade;
