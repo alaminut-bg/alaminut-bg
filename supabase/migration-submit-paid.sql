@@ -7,7 +7,25 @@ alter table orders
   add column if not exists paid_by      uuid references profiles(id) on delete set null;
 
 -- Заварените поръчки се смятат за пратени, за да не изчезнат от кухнята.
-update orders set submitted_at = created_at where submitted_at is null;
+-- Тригерът orders_lock пази submitted_at след 10:30 и допуска само админ, а
+-- тук auth.uid() е NULL. Затова се спира за момента — в една транзакция, така
+-- че при грешка се отменя заедно с ъпдейта.
+do $$
+declare
+  v_has_trigger boolean := exists (
+    select 1 from pg_trigger where tgname = 'orders_lock' and not tgisinternal
+  );
+begin
+  if v_has_trigger then
+    alter table orders disable trigger orders_lock;
+  end if;
+
+  update orders set submitted_at = created_at where submitted_at is null;
+
+  if v_has_trigger then
+    alter table orders enable trigger orders_lock;
+  end if;
+end $$;
 
 -- ── правила ─────────────────────────────────────────────────────────────
 -- Собственикът може да праща и да отваря наново своята поръчка, но само
