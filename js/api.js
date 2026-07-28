@@ -7,7 +7,6 @@ function boom(error, fallback) {
   console.error('[alaminut]', error);   // the Bulgarian text below hides the cause
   const m = String(error.message || '');
   if (m.includes('10:30')) throw new Error('Поръчките са заключени след 10:30.');
-  if (m.includes('не работи')) throw new Error('Кухнята не работи на тази дата.');
   if (m.includes('не е налично') || m.includes('не е в дневното'))
     throw new Error('Това ястие не се предлага за този ден.');
   if (m.includes('администратор')) throw new Error('Само администратор може да направи това.');

@@ -293,9 +293,9 @@ do $$ begin
          'FAIL: admin must be able to order a non-alaminut dish under alaminut and set its own price';
 end $$;
 
--- ══════════════ 8. a day with no menu is a non-working day ══════════════
--- 2026-08-10 deliberately has no daily_menu rows, so the kitchen is shut and
--- a normal user must not be able to order anything — not even аламинут.
+-- ══════════ 8. a day with no menu: аламинут yes, меню no ══════════
+-- 2026-08-10 deliberately has no daily_menu rows. Аламинут is a standing
+-- list and stays orderable; there is simply no меню to order.
 -- Owned by bbbbbbbb for the same isolation-safety reason as section 5.
 
 insert into orders (id, serve_date, profile_id) values
@@ -304,19 +304,7 @@ insert into orders (id, serve_date, profile_id) values
 
 set local request.jwt.claims = '{"sub":"bbbbbbbb-0000-0000-0000-000000000002"}';
 
-do $$ begin
-  begin
-    insert into order_items (order_id, dish_id, source, qty, unit_price) values
-      ('eeeeeeee-0000-0000-0000-000000000005',
-       'dddddddd-0000-0000-0000-000000000001','alaminut',1,3.50);
-    raise exception 'FAIL: user ordered on a day with no menu';
-  exception when check_violation then
-    null;  -- expected
-  end;
-end $$;
-
-set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-0000-0000-000000000001"}';
-
+-- аламинут: allowed
 insert into order_items (order_id, dish_id, source, qty, unit_price) values
   ('eeeeeeee-0000-0000-0000-000000000005',
    'dddddddd-0000-0000-0000-000000000001','alaminut',1,3.50);
@@ -324,7 +312,19 @@ insert into order_items (order_id, dish_id, source, qty, unit_price) values
 do $$ begin
   assert (select count(*) from order_items
           where order_id = 'eeeeeeee-0000-0000-0000-000000000005') = 1,
-         'FAIL: admin must be able to order on a non-working day';
+         'FAIL: аламинут must stay orderable on a day with no menu';
+end $$;
+
+-- меню: rejected, the dish is on no daily_menu for that date
+do $$ begin
+  begin
+    insert into order_items (order_id, dish_id, source, qty, unit_price) values
+      ('eeeeeeee-0000-0000-0000-000000000005',
+       'dddddddd-0000-0000-0000-000000000001','menu',1,3.50);
+    raise exception 'FAIL: user ordered меню on a day with no menu';
+  exception when check_violation then
+    null;  -- expected
+  end;
 end $$;
 
 -- ══════════════════════ 9. RLS isolation ══════════════════════

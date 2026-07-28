@@ -158,7 +158,7 @@ function draw() {
     '</div>' +
     (menu.length ? '' :
       '<div class="locked-note">Няма въведено меню за този ден. ' +
-      'Добави го в таб „Седмица“, ако кухнята работи.</div>') +
+      'Добави го в таб „Меню“.</div>') +
     '<div class="section-head"><span>Поръчки</span>' +
       '<span class="done-count">' + done + ' / ' + rows.length + ' приключени</span></div>' +
     (ordered.length

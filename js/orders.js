@@ -4,11 +4,11 @@ import { setStatus, flashSaved } from './ui.js';
 import { currentProfile } from './auth.js';
 
 // One section per source. alaminut is served today, menu is served tomorrow.
-// `works` = the admin entered a menu for that date; an empty day means the
-// kitchen does not work then (weekends, the odd weekday).
+// Аламинут is a standing list, always available. Меню exists only for dates
+// the admin has actually built one for.
 const S = {
-  alaminut: { date: null, dishes: [], qty: {}, orderId: null, locked: false, works: false },
-  menu:     { date: null, dishes: [], qty: {}, orderId: null, locked: false, works: false },
+  alaminut: { date: null, dishes: [], qty: {}, orderId: null, locked: false },
+  menu:     { date: null, dishes: [], qty: {}, orderId: null, locked: false },
 };
 let completedAt = null;
 let saveTimer = null;
@@ -22,48 +22,61 @@ const sectionTotal = source =>
 
 const grandTotal = () => sectionTotal('alaminut') + sectionTotal('menu');
 
+/** днес / утре / вдругиден, else the plain date. */
+function relWord(iso, today) {
+  if (iso === today) return 'днес';
+  if (iso === addDaysISO(today, 1)) return 'утре';
+  if (iso === addDaysISO(today, 2)) return 'вдругиден';
+  return null;
+}
+
+/**
+ * The section always targets the first day still open for that source, so the
+ * screen is never a dead end. Before 10:30 that is аламинут-today and
+ * меню-tomorrow; after 10:30 both roll one day forward.
+ */
+function nextOpenDate(source, today) {
+  const first = source === 'alaminut' ? today : addDaysISO(today, 1);
+  return isLockedClient(first, source) ? addDaysISO(first, 1) : first;
+}
+
 export async function renderUserScreen() {
   const today = todayISO();
-  const tomorrow = addDaysISO(today, 1);
 
-  S.alaminut.date = today;
-  S.menu.date = tomorrow;
-  S.alaminut.locked = isLockedClient(today, 'alaminut');
-  S.menu.locked = isLockedClient(tomorrow, 'menu');
+  S.alaminut.date = nextOpenDate('alaminut', today);
+  S.menu.date = nextOpenDate('menu', today);
+  S.alaminut.locked = isLockedClient(S.alaminut.date, 'alaminut');
+  S.menu.locked = isLockedClient(S.menu.date, 'menu');
 
   const me = currentProfile();
   document.getElementById('uWho').textContent = me?.display_name ?? '';
 
   setStatus('зареждане…');
   try {
-    const [ala, todayMenu, tomorrowMenu, todayOrder, tomorrowOrder] =
-      await Promise.all([
-        api.listAlaminut(),
-        api.listDayMenu(today),        // only to learn whether today is a working day
-        api.listDayMenu(tomorrow),
-        api.getMyOrder(today),
-        api.getMyOrder(tomorrow),
-      ]);
+    const [ala, menuDishes, alaOrder, menuOrder] = await Promise.all([
+      api.listAlaminut(),
+      api.listDayMenu(S.menu.date),
+      api.getMyOrder(S.alaminut.date),
+      api.getMyOrder(S.menu.date),
+    ]);
 
     S.alaminut.dishes = ala;
-    S.alaminut.works = todayMenu.length > 0;
-    S.menu.dishes = tomorrowMenu;
-    S.menu.works = tomorrowMenu.length > 0;
+    S.menu.dishes = menuDishes;
 
-    S.alaminut.orderId = todayOrder?.id ?? null;
-    S.menu.orderId = tomorrowOrder?.id ?? null;
-    completedAt = todayOrder?.completed_at ?? null;
+    S.alaminut.orderId = alaOrder?.id ?? null;
+    S.menu.orderId = menuOrder?.id ?? null;
+    completedAt = alaOrder?.completed_at ?? null;
 
     S.alaminut.qty = {};
     S.menu.qty = {};
-    for (const it of todayOrder?.items ?? []) {
+    for (const it of alaOrder?.items ?? []) {
       if (it.source === 'alaminut') S.alaminut.qty[it.dish_id] = it.qty;
     }
-    for (const it of tomorrowOrder?.items ?? []) {
+    for (const it of menuOrder?.items ?? []) {
       if (it.source === 'menu') S.menu.qty[it.dish_id] = it.qty;
     }
 
-    draw();
+    draw(today);
     setStatus('');
   } catch (e) {
     setStatus(e.message, 'err');
@@ -93,17 +106,20 @@ function gridHTML(source) {
   }).join('');
 }
 
-function sectionHTML(source, title, when, lockHint) {
+function sectionHTML(source, title, when, rel) {
   const st = S[source];
   const picked = Object.keys(st.qty).length;
   let inner;
 
-  if (!st.works) {
-    inner = '<div class="locked-note">Кухнята не работи на тази дата.</div>';
-  } else if (st.dishes.length === 0) {
-    inner = '<div class="locked-note">Аламинут списъкът е празен.</div>';
+  if (st.dishes.length === 0) {
+    inner = '<div class="locked-note">' +
+      (source === 'menu'
+        ? 'Няма въведено меню за ' + (rel || when) + '.'
+        : 'Аламинут списъкът е празен.') + '</div>';
   } else {
-    inner = (st.locked ? '<div class="locked-note">🔒 ' + lockHint + '</div>' : '') +
+    inner = (st.locked
+        ? '<div class="locked-note">🔒 Заключено — поръчките се приемат до 10:30.</div>'
+        : '') +
       '<div class="dish-grid">' + gridHTML(source) + '</div>';
   }
 
@@ -120,19 +136,27 @@ function sectionHTML(source, title, when, lockHint) {
     '</div>';
 }
 
-function draw() {
-  const t = formatDayLabel(S.alaminut.date);
-  const n = formatDayLabel(S.menu.date);
+function draw(today = todayISO()) {
+  const head = (source, word) => {
+    const rel = relWord(S[source].date, today);
+    const l = formatDayLabel(S[source].date);
+    return {
+      title: (rel ? rel[0].toUpperCase() + rel.slice(1) : l.dnum) + ' — ' + word,
+      when: `${l.dow}, ${l.dnum}`,
+      rel,
+    };
+  };
+
+  const a = head('alaminut', 'аламинут');
+  const m = head('menu', 'меню');
 
   document.getElementById('userBody').innerHTML =
     (completedAt
       ? '<div class="section-head"><span>Поръчката е взета</span>' +
         '<span class="done-badge">✓ Приключена</span></div>'
       : '') +
-    sectionHTML('alaminut', 'Днес — аламинут', `${t.dow}, ${t.dnum}`,
-      'Заключено — аламинут се поръчва до 10:30.') +
-    sectionHTML('menu', 'Утре — меню', `${n.dow}, ${n.dnum}`,
-      'Заключено — менюто за утре се поръчва до 10:30 днес.') +
+    sectionHTML('alaminut', a.title, a.when, a.rel) +
+    sectionHTML('menu', m.title, m.when, m.rel) +
     '<div class="totalbar">' +
       '<div><div class="lbl">Общо</div>' +
       '<div class="val">' + eur(grandTotal()) + '</div></div>' +
@@ -147,7 +171,7 @@ function bind() {
     el.onclick = e => {
       if (e.target.hasAttribute('data-sub')) return;
       const [source, id] = el.getAttribute('data-add').split('|');
-      if (S[source].locked || !S[source].works) return;
+      if (S[source].locked) return;
       S[source].qty[id] = (Number(S[source].qty[id]) || 0) + 1;
       touch(source, id);
     };
@@ -157,7 +181,7 @@ function bind() {
     el.onclick = e => {
       e.stopPropagation();
       const [source, id] = el.getAttribute('data-sub').split('|');
-      if (S[source].locked || !S[source].works) return;
+      if (S[source].locked) return;
       const next = (Number(S[source].qty[id]) || 0) - 1;
       if (next > 0) S[source].qty[id] = next; else delete S[source].qty[id];
       touch(source, id);
@@ -191,7 +215,7 @@ async function flush() {
     } catch (e) {
       // A lock or availability rejection means our view disagrees with the
       // server — our clock may be wrong. Reload rather than retry forever.
-      if (/10:30|не работи|не се предлага/.test(e.message)) {
+      if (/10:30|не се предлага/.test(e.message)) {
         dirty.clear();
         setStatus(e.message, 'err');
         await renderUserScreen();

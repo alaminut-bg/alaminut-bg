@@ -165,11 +165,10 @@ begin
     return v_row;
   end if;
 
-  -- rule: a date with no menu is a day the kitchen does not work
-  if not exists (select 1 from daily_menu where serve_date = v_date) then
-    raise exception 'Кухнята не работи на тази дата.'
-      using errcode = 'check_violation';
-  end if;
+  -- No day-level "is the kitchen open" rule. Аламинут is a standing list and
+  -- is always orderable; a меню item is already restricted to dishes actually
+  -- placed on that date's daily_menu by the check further down, so a day with
+  -- no menu simply has no меню to order.
 
   -- An UPDATE may only change qty. Letting dish_id or source move would let a
   -- cheap line be retargeted at an expensive dish while keeping its old
