@@ -101,14 +101,13 @@ export async function unpinDish(id) {
 export const DAY_CLOSED = 'closed';
 export const DAY_NO_MENU = 'no_menu';
 
-/** Only fully closed days — these are the ones the user screen skips over. */
-export async function listClosedDays(fromDate, toDate) {
+/** Map of ISO date → {kind, note} for a window of days. */
+export async function listDayMarks(fromDate, toDate) {
   const { data, error } = await sb.from('non_working')
-    .select('serve_date')
-    .eq('kind', DAY_CLOSED)
+    .select('serve_date, kind, note')
     .gte('serve_date', fromDate).lte('serve_date', toDate);
   boom(error, 'Неработните дни не се заредиха.');
-  return new Set((data ?? []).map(r => r.serve_date));
+  return new Map((data ?? []).map(r => [r.serve_date, { kind: r.kind, note: r.note }]));
 }
 
 export async function getDayMark(date) {

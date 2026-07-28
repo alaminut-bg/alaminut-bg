@@ -14,6 +14,7 @@ const S = {
               submitted: false, paid: false },
 };
 let completedAt = null;
+let marks = new Map();   // ISO date -> {kind, note}
 
 /** Editable only while unlocked AND not already sent to the kitchen. */
 const editable = source => !S[source].locked && !S[source].submitted;
@@ -51,6 +52,20 @@ function nextOpenDate(source, today, nonWorking) {
   return d;
 }
 
+/**
+ * Why the natural day was passed over, so the screen explains itself instead
+ * of silently showing a later date. Weekends are left unexplained — the day
+ * name is right there in the header.
+ */
+function skipNotice(source, natural, chosen, marks) {
+  if (natural === chosen) return '';
+  const m = marks.get(natural);
+  if (!m || m.kind !== api.DAY_CLOSED) return '';
+  const l = formatDayLabel(natural);
+  return '<div class="kwarn">⛔ ' + l.dow + ', ' + l.dnum + ' — кухнята не работи' +
+    (m.note ? ' (' + esc(m.note) + ')' : '') + '.</div>';
+}
+
 export async function renderUserScreen() {
   const today = todayISO();
 
@@ -59,10 +74,14 @@ export async function renderUserScreen() {
 
   setStatus('зареждане…');
   try {
-    const nonWorking = await api.listClosedDays(today, addDaysISO(today, 30));
+    marks = await api.listDayMarks(today, addDaysISO(today, 30));
+    const closed = new Set(
+      [...marks].filter(([, m]) => m.kind === api.DAY_CLOSED).map(([d]) => d));
 
-    S.alaminut.date = nextOpenDate('alaminut', today, nonWorking);
-    S.menu.date = nextOpenDate('menu', today, nonWorking);
+    S.alaminut.natural = today;
+    S.menu.natural = addDaysISO(today, 1);
+    S.alaminut.date = nextOpenDate('alaminut', today, closed);
+    S.menu.date = nextOpenDate('menu', today, closed);
     S.alaminut.locked = isLockedClient(S.alaminut.date, 'alaminut');
     S.menu.locked = isLockedClient(S.menu.date, 'menu');
 
@@ -170,10 +189,14 @@ function sectionHTML(source, title, when, rel) {
   let inner;
 
   if (st.dishes.length === 0) {
+    const marked = marks.get(st.date);
     inner = '<div class="locked-note">' +
-      (source === 'menu'
-        ? 'Няма въведено меню за ' + (rel || when) + '.'
-        : 'Аламинут списъкът е празен.') + '</div>';
+      (source !== 'menu'
+        ? 'Аламинут списъкът е празен.'
+        : marked?.kind === 'no_menu'
+          ? '🚫 Няма меню за този ден.' +
+            (marked.note ? '<br>' + esc(marked.note) : '')
+          : 'Менюто за ' + (rel || when) + ' още не е въведено.') + '</div>';
   } else {
     inner = '<div class="dish-grid">' + gridHTML(source) + '</div>' +
       actionsHTML(source);
@@ -208,14 +231,16 @@ function draw(today = todayISO()) {
 
   const a = head('alaminut', 'Аламинут');
   const m = head('menu', 'Меню');
+  const aSkip = skipNotice('alaminut', S.alaminut.natural, S.alaminut.date, marks);
+  const mSkip = skipNotice('menu', S.menu.natural, S.menu.date, marks);
 
   document.getElementById('userBody').innerHTML =
     (completedAt
       ? '<div class="section-head"><span>Поръчката е взета</span>' +
         '<span class="done-badge">✓ Приключена</span></div>'
       : '') +
-    sectionHTML('alaminut', a.title, a.when, a.rel) +
-    sectionHTML('menu', m.title, m.when, m.rel) +
+    aSkip + sectionHTML('alaminut', a.title, a.when, a.rel) +
+    mSkip + sectionHTML('menu', m.title, m.when, m.rel) +
     '<div class="totalbar">' +
       '<div><div class="lbl">Общо</div>' +
       '<div class="val">' + eur(grandTotal()) + '</div></div>' +
