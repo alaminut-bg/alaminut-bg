@@ -3,12 +3,23 @@ import { esc } from './util.js';
 import { ask, askText, flashSaved, setStatus , showError } from './ui.js';
 
 let people = [];
+let total = 0;
+let page = 0;
+let query = '';
+let searchTimer = null;
 
-export async function renderPeople() {
+export async function renderPeople(keepFocus) {
   setStatus('зареждане…');
   try {
-    people = await api.listProfiles();
-    draw();
+    const res = await api.listProfiles({ page, query });
+    // Deleting the last person on a page would otherwise leave it blank.
+    if (!res.rows.length && page > 0) {
+      page = Math.max(0, Math.ceil(res.total / api.PEOPLE_PAGE_SIZE) - 1);
+      return renderPeople(keepFocus);
+    }
+    people = res.rows;
+    total = res.total;
+    draw(keepFocus);
     setStatus('');
   } catch (e) {
     setStatus(e.message, 'err');
@@ -16,7 +27,11 @@ export async function renderPeople() {
   }
 }
 
-function draw() {
+function draw(keepFocus) {
+  const pages = Math.max(1, Math.ceil(total / api.PEOPLE_PAGE_SIZE));
+  const first = total ? page * api.PEOPLE_PAGE_SIZE + 1 : 0;
+  const last = Math.min((page + 1) * api.PEOPLE_PAGE_SIZE, total);
+
   const rows = people.map(p =>
     '<div class="person-row' + (p.active ? '' : ' off') + '">' +
       '<div class="pinfo">' +
@@ -44,15 +59,47 @@ function draw() {
         '<button class="btn-wide" id="npAdd" style="margin-top:11px">+ Създай акаунт</button>' +
       '</div>' +
     '</div>' +
-    '<div class="set-block"><h2>Хора (' + people.length + ')</h2>' + rows + '</div>' +
+    '<div class="set-block">' +
+      '<h2>Хора (' + total + ')</h2>' +
+      '<div class="set-foot" style="padding-bottom:0">' +
+        '<input class="cat-search" id="pplSearch" placeholder="търси по име или потребител…" ' +
+          'value="' + esc(query) + '" autocomplete="off">' +
+      '</div>' +
+      (rows || '<div class="kempty" style="padding:16px">Няма съвпадение.</div>') +
+      (pages > 1
+        ? '<div class="pager">' +
+            '<button id="pplPrev"' + (page === 0 ? ' disabled' : '') + '>‹</button>' +
+            '<span>' + first + '–' + last + ' от ' + total + '</span>' +
+            '<button id="pplNext"' + (page >= pages - 1 ? ' disabled' : '') + '>›</button>' +
+          '</div>'
+        : '') +
+    '</div>' +
     '<p class="set-note">Потребителското име е на латиница, защото с него се влиза. ' +
     'Званието и фамилията се показват в приложението. Няма възстановяване по имейл — ' +
     'администратор задава нова парола.</p>';
 
   bind();
+
+  if (keepFocus) {
+    const el = document.getElementById('pplSearch');
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  }
 }
 
 function bind() {
+  const s = document.getElementById('pplSearch');
+  if (s) s.oninput = () => {
+    query = s.value;
+    page = 0;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => renderPeople(true), 250);
+  };
+
+  const prev = document.getElementById('pplPrev');
+  if (prev) prev.onclick = () => { page = Math.max(0, page - 1); renderPeople(); };
+  const next = document.getElementById('pplNext');
+  if (next) next.onclick = () => { page += 1; renderPeople(); };
+
   document.getElementById('npAdd').onclick = async () => {
     const btn = document.getElementById('npAdd');
     const username = document.getElementById('npUser').value.trim().toLowerCase();

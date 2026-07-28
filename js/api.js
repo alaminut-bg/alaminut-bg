@@ -373,11 +373,30 @@ export async function changeMyPassword(password) {
   if (error) throw new Error('Паролата не се смени.');
 }
 
-export async function listProfiles() {
-  const { data, error } = await sb.from('profiles')
-    .select('id, username, display_name, role, active').order('display_name');
+export const PEOPLE_PAGE_SIZE = 20;
+
+/**
+ * One page of accounts, with the total so the UI can show "21–40 от 137".
+ * The search runs in Postgres, not on the page, so it finds people who are
+ * not on the page you happen to be looking at.
+ */
+export async function listProfiles({ page = 0, query = '' } = {}) {
+  const from = page * PEOPLE_PAGE_SIZE;
+  const to = from + PEOPLE_PAGE_SIZE - 1;
+
+  let q = sb.from('profiles')
+    .select('id, username, display_name, role, active', { count: 'exact' })
+    .order('display_name')
+    .range(from, to);
+
+  // Commas and parens are PostgREST's own separators in an `or` filter, so a
+  // name containing one would otherwise build a broken query.
+  const term = String(query || '').trim().replace(/[,()*]/g, ' ').trim();
+  if (term) q = q.or(`display_name.ilike.%${term}%,username.ilike.%${term}%`);
+
+  const { data, error, count } = await q;
   boom(error, 'Хората не се заредиха.');
-  return data ?? [];
+  return { rows: data ?? [], total: count ?? 0 };
 }
 
 export async function adminUsers(action, payload = {}) {
