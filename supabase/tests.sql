@@ -26,6 +26,14 @@ insert into profiles (id, username, display_name, role) values
 insert into dishes (id, name, price, in_alaminut) values
   ('dddddddd-0000-0000-0000-000000000001','Тест ястие', 3.50, true);
 
+-- A dish that is offered on the daily menu but NOT in the alaminut list —
+-- used to prove source/availability enforcement works both directions.
+insert into dishes (id, name, price, in_alaminut) values
+  ('dddddddd-0000-0000-0000-000000000002','Тестово меню ястие', 5.00, false);
+
+insert into daily_menu (serve_date, dish_id) values
+  (date '2026-08-03', 'dddddddd-0000-0000-0000-000000000002');
+
 -- ══════════════════════ 1. is_locked() boundary ══════════════════════
 -- Freeze the clock by redefining app_now(). Rolled back with the tx.
 
@@ -113,7 +121,213 @@ do $$ begin
          'completed_by must be stamped from auth.uid()';
 end $$;
 
--- ══════════════════════ 4. RLS isolation ══════════════════════
+-- ══════════════════ 4. orders cannot be deleted or reassigned by users ══════════════════
+-- The FK cascade + serve_date reassignment bypasses described in the review:
+-- a non-admin must never delete an order, nor move it to another day/owner.
+
+set local request.jwt.claims = '{"sub":"bbbbbbbb-0000-0000-0000-000000000002"}';
+
+do $$ begin
+  begin
+    delete from orders where id = 'eeeeeeee-0000-0000-0000-000000000001';
+    raise exception 'FAIL: user was allowed to delete their own order';
+  exception when check_violation then
+    null;  -- expected
+  end;
+end $$;
+
+do $$ begin
+  assert (select count(*) from order_items
+          where order_id = 'eeeeeeee-0000-0000-0000-000000000001') = 1,
+         'FAIL: order items must survive a rejected delete';
+end $$;
+
+do $$ begin
+  begin
+    update orders set serve_date = date '2026-08-01'
+    where id = 'eeeeeeee-0000-0000-0000-000000000001';
+    raise exception 'FAIL: user was allowed to move their order to another day';
+  exception when check_violation then
+    null;  -- expected
+  end;
+end $$;
+
+do $$ begin
+  assert (select serve_date from orders
+          where id = 'eeeeeeee-0000-0000-0000-000000000001') = date '2026-07-27',
+         'FAIL: serve_date must be unchanged after the rejected update';
+end $$;
+
+-- admin bypass: delete and reassignment both work for admins
+set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-0000-0000-000000000001"}';
+
+insert into orders (id, serve_date, profile_id) values
+  ('eeeeeeee-0000-0000-0000-000000000099', date '2026-07-27',
+   'cccccccc-0000-0000-0000-000000000003');
+
+update orders set serve_date = date '2026-08-01'
+where id = 'eeeeeeee-0000-0000-0000-000000000099';
+
+do $$ begin
+  assert (select serve_date from orders
+          where id = 'eeeeeeee-0000-0000-0000-000000000099') = date '2026-08-01',
+         'FAIL: admin must be able to move an order to another day';
+end $$;
+
+delete from orders where id = 'eeeeeeee-0000-0000-0000-000000000099';
+
+do $$ begin
+  assert (select count(*) from orders
+          where id = 'eeeeeeee-0000-0000-0000-000000000099') = 0,
+         'FAIL: admin must be able to delete an order';
+end $$;
+
+-- ══════════════════ 5. completed_by cannot be forged on INSERT ══════════════════
+-- Owned by bbbbbbbb (not cccccccc) so it doesn't disturb the "cccccccc sees
+-- zero orders" isolation assertion in section 9.
+
+set local request.jwt.claims = '{"sub":"bbbbbbbb-0000-0000-0000-000000000002"}';
+
+insert into orders (id, serve_date, profile_id, completed_by) values
+  ('eeeeeeee-0000-0000-0000-000000000004', date '2026-08-03',
+   'bbbbbbbb-0000-0000-0000-000000000002',
+   'aaaaaaaa-0000-0000-0000-000000000001');
+
+do $$ begin
+  assert (select completed_by from orders
+          where id = 'eeeeeeee-0000-0000-0000-000000000004') is null,
+         'FAIL: completed_by must be forced to null on insert unless legitimately completed';
+end $$;
+
+-- ══════════════════ 6. unit_price is a server-side snapshot ══════════════════
+-- 2026-08-03 is far enough out that neither alaminut nor menu is locked
+-- under the clock frozen at 2026-07-27 10:30 above.
+
+insert into order_items (order_id, dish_id, source, qty, unit_price) values
+  ('eeeeeeee-0000-0000-0000-000000000004',
+   'dddddddd-0000-0000-0000-000000000001','alaminut',2,0.01);
+
+do $$ begin
+  assert (select unit_price from order_items
+          where order_id = 'eeeeeeee-0000-0000-0000-000000000004'
+            and dish_id = 'dddddddd-0000-0000-0000-000000000001') = 3.50,
+         'FAIL: unit_price must be overwritten with the catalog price on insert';
+end $$;
+
+do $$ begin
+  begin
+    update order_items set unit_price = 0.01
+    where order_id = 'eeeeeeee-0000-0000-0000-000000000004'
+      and dish_id = 'dddddddd-0000-0000-0000-000000000001';
+    raise exception 'FAIL: user was allowed to change unit_price on update';
+  exception when check_violation then
+    null;  -- expected
+  end;
+end $$;
+
+update order_items set qty = 5
+where order_id = 'eeeeeeee-0000-0000-0000-000000000004'
+  and dish_id = 'dddddddd-0000-0000-0000-000000000001';
+
+do $$ begin
+  assert (select qty from order_items
+          where order_id = 'eeeeeeee-0000-0000-0000-000000000004'
+            and dish_id = 'dddddddd-0000-0000-0000-000000000001') = 5,
+         'FAIL: qty-only update must succeed';
+  assert (select unit_price from order_items
+          where order_id = 'eeeeeeee-0000-0000-0000-000000000004'
+            and dish_id = 'dddddddd-0000-0000-0000-000000000001') = 3.50,
+         'FAIL: unit_price must remain the snapshot after a qty-only update';
+end $$;
+
+-- ══════════════════ 7. a dish must actually be offered under the source ══════════════════
+
+-- alaminut-only dish ordered under source = 'menu' → no matching daily_menu row
+do $$ begin
+  begin
+    insert into order_items (order_id, dish_id, source, qty, unit_price) values
+      ('eeeeeeee-0000-0000-0000-000000000004',
+       'dddddddd-0000-0000-0000-000000000001','menu',1,3.50);
+    raise exception 'FAIL: user ordered an alaminut-only dish under source=menu';
+  exception when check_violation then
+    null;  -- expected
+  end;
+end $$;
+
+-- menu-only dish ordered under source = 'alaminut' → in_alaminut is false
+do $$ begin
+  begin
+    insert into order_items (order_id, dish_id, source, qty, unit_price) values
+      ('eeeeeeee-0000-0000-0000-000000000004',
+       'dddddddd-0000-0000-0000-000000000002','alaminut',1,5.00);
+    raise exception 'FAIL: user ordered a non-alaminut dish under source=alaminut';
+  exception when check_violation then
+    null;  -- expected
+  end;
+end $$;
+
+-- the same dish under the correct source (menu, matching daily_menu) must succeed
+insert into order_items (order_id, dish_id, source, qty, unit_price) values
+  ('eeeeeeee-0000-0000-0000-000000000004',
+   'dddddddd-0000-0000-0000-000000000002','menu',1,999.00);
+
+do $$ begin
+  assert (select unit_price from order_items
+          where order_id = 'eeeeeeee-0000-0000-0000-000000000004'
+            and dish_id = 'dddddddd-0000-0000-0000-000000000002') = 5.00,
+         'FAIL: valid menu order must succeed and snapshot the catalog price';
+end $$;
+
+-- admin bypasses both the availability check and the price snapshot
+set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-0000-0000-000000000001"}';
+
+insert into order_items (order_id, dish_id, source, qty, unit_price) values
+  ('eeeeeeee-0000-0000-0000-000000000004',
+   'dddddddd-0000-0000-0000-000000000002','alaminut',1,1.23);
+
+do $$ begin
+  assert (select unit_price from order_items
+          where order_id = 'eeeeeeee-0000-0000-0000-000000000004'
+            and dish_id = 'dddddddd-0000-0000-0000-000000000002'
+            and source = 'alaminut') = 1.23,
+         'FAIL: admin must be able to order a non-alaminut dish under alaminut and set its own price';
+end $$;
+
+-- ══════════════════ 8. a closed (санитарен) day rejects orders ══════════════════
+-- Owned by bbbbbbbb for the same isolation-safety reason as section 5.
+
+insert into day_status (serve_date, closed) values (date '2026-08-10', true);
+
+insert into orders (id, serve_date, profile_id) values
+  ('eeeeeeee-0000-0000-0000-000000000005', date '2026-08-10',
+   'bbbbbbbb-0000-0000-0000-000000000002');
+
+set local request.jwt.claims = '{"sub":"bbbbbbbb-0000-0000-0000-000000000002"}';
+
+do $$ begin
+  begin
+    insert into order_items (order_id, dish_id, source, qty, unit_price) values
+      ('eeeeeeee-0000-0000-0000-000000000005',
+       'dddddddd-0000-0000-0000-000000000001','alaminut',1,3.50);
+    raise exception 'FAIL: user ordered on a closed (санитарен) day';
+  exception when check_violation then
+    null;  -- expected
+  end;
+end $$;
+
+set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-0000-0000-000000000001"}';
+
+insert into order_items (order_id, dish_id, source, qty, unit_price) values
+  ('eeeeeeee-0000-0000-0000-000000000005',
+   'dddddddd-0000-0000-0000-000000000001','alaminut',1,3.50);
+
+do $$ begin
+  assert (select count(*) from order_items
+          where order_id = 'eeeeeeee-0000-0000-0000-000000000005') = 1,
+         'FAIL: admin must be able to order on a closed day';
+end $$;
+
+-- ══════════════════════ 9. RLS isolation ══════════════════════
 
 set local request.jwt.claims = '{"sub":"cccccccc-0000-0000-0000-000000000003"}';
 

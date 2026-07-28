@@ -2,6 +2,7 @@
 -- Run in Supabase → SQL Editor.
 
 drop trigger  if exists orders_completion  on orders;
+drop trigger  if exists orders_lock        on orders;
 drop trigger  if exists order_items_lock   on order_items;
 drop table    if exists order_items cascade;
 drop table    if exists orders      cascade;
@@ -12,6 +13,7 @@ drop table    if exists profiles    cascade;
 drop function if exists is_admin() cascade;
 drop function if exists is_locked(date, text) cascade;
 drop function if exists enforce_lock() cascade;
+drop function if exists enforce_orders_lock() cascade;
 drop function if exists enforce_completion() cascade;
 drop function if exists sofia_date() cascade;
 drop function if exists sofia_time() cascade;
@@ -142,8 +144,12 @@ $$;
 create or replace function enforce_lock()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
-  v_date date;
-  v_row  order_items;
+  v_date     date;
+  v_row      order_items;
+  v_price    numeric(6,2);
+  v_in_alam  boolean;
+  v_archived boolean;
+  v_closed   boolean;
 begin
   v_row := coalesce(new, old);
   select serve_date into v_date from orders where id = v_row.order_id;
@@ -157,13 +163,88 @@ begin
       using errcode = 'check_violation';
   end if;
 
-  return v_row;
+  -- DELETE has no `new` row; the checks below only apply to INSERT/UPDATE.
+  if tg_op = 'DELETE' then
+    return v_row;
+  end if;
+
+  -- rule: no orders on a санитарен ден (day_status.closed)
+  select closed into v_closed from day_status where serve_date = v_date;
+  if coalesce(v_closed, false) then
+    raise exception 'Не може да се поръчва за санитарен ден.'
+      using errcode = 'check_violation';
+  end if;
+
+  -- rule: the dish must actually be offered under the chosen source
+  select archived, in_alaminut into v_archived, v_in_alam
+    from dishes where id = new.dish_id;
+
+  if new.source = 'alaminut' then
+    if coalesce(v_archived, true) or not coalesce(v_in_alam, false) then
+      raise exception 'Това ястие не е налично в аламинут менюто.'
+        using errcode = 'check_violation';
+    end if;
+  else -- 'menu'
+    if coalesce(v_archived, true) or not exists (
+      select 1 from daily_menu
+      where serve_date = v_date and dish_id = new.dish_id
+    ) then
+      raise exception 'Това ястие не е в дневното меню за тази дата.'
+        using errcode = 'check_violation';
+    end if;
+  end if;
+
+  -- rule: unit_price is a server-side snapshot, never client input
+  if tg_op = 'INSERT' then
+    select price into v_price from dishes where id = new.dish_id;
+    new.unit_price := v_price;
+  elsif tg_op = 'UPDATE' then
+    if new.unit_price is distinct from old.unit_price then
+      raise exception 'Цената на артикул не може да се променя ръчно.'
+        using errcode = 'check_violation';
+    end if;
+  end if;
+
+  return new;
 end;
 $$;
 
 create trigger order_items_lock
   before insert or update or delete on order_items
   for each row execute function enforce_lock();
+
+-- ─────────────────────── orders cannot be tampered with ─────────────────────
+-- Non-admins may never delete an order (the app never lets a user remove
+-- their own order — only admins do, e.g. for guests). Nor may they reassign
+-- an order to another day/person, which would otherwise let them edit
+-- locked items freely and set serve_date back afterwards.
+
+create or replace function enforce_orders_lock()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if is_admin() then
+    return coalesce(new, old);
+  end if;
+
+  if tg_op = 'DELETE' then
+    raise exception 'Само администратор може да изтрива поръчки.'
+      using errcode = 'check_violation';
+  end if;
+
+  if new.serve_date is distinct from old.serve_date
+     or new.profile_id is distinct from old.profile_id
+     or new.guest_name is distinct from old.guest_name then
+    raise exception 'Не можете да променяте деня или собственика на поръчката.'
+      using errcode = 'check_violation';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger orders_lock
+  before update or delete on orders
+  for each row execute function enforce_orders_lock();
 
 -- ───────────────────────── completion is admin-only ─────────────────────────
 -- The owner's UPDATE policy would otherwise reach completed_at. Guard the
@@ -177,6 +258,9 @@ begin
       raise exception 'Само администратор може да отбележи поръчка като приключена.'
         using errcode = 'check_violation';
     end if;
+    -- completed_by is never client-supplied: null unless an admin is
+    -- legitimately completing the order at insert time.
+    new.completed_by := case when new.completed_at is null then null else auth.uid() end;
     return new;
   end if;
 
