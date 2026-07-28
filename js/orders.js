@@ -125,6 +125,28 @@ function gridHTML(source) {
   }).join('');
 }
 
+/**
+ * One box per dish. Кутия is the pinned extra in the меню grid, so it is
+ * counted apart from the food rather than as another dish.
+ */
+function boxHint(source) {
+  if (source !== 'menu') return '';
+  const st = S.menu;
+  let dishes = 0, boxes = 0;
+  for (const d of st.dishes) {
+    const q = Number(st.qty[d.id]) || 0;
+    if (!q) continue;
+    if (d.pinned) boxes += q; else dishes += q;
+  }
+  if (!dishes) return '';
+
+  if (boxes >= dishes) {
+    return '<div class="warn-note">✓ ' + dishes + ' ястия · ' + boxes + ' кутии</div>';
+  }
+  return '<div class="kwarn">📦 ' + dishes + ' ястия, ' + boxes + ' кутии — ' +
+    'добави още ' + (dishes - boxes) + '. Трябва по 1 кутия за всяко ястие.</div>';
+}
+
 /** Прати / Модифицирай, plus the state line above it. */
 function actionsHTML(source) {
   const st = S[source];
@@ -136,14 +158,16 @@ function actionsHTML(source) {
   }
 
   if (st.submitted) {
-    return '<div class="sent-note">✓ Пратена' +
+    return boxHint(source) +
+      '<div class="sent-note">✓ Пратена' +
         (st.paid ? ' · <b>платена</b>' : '') + '</div>' +
       '<div class="p-actions"><button class="btn-wide" data-reopen="' + source + '">' +
         '✎ Модифицирай поръчката</button></div>' +
       (st.paid ? '' : '<div class="warn-note">⚠ Неплатени поръчки не се обработват.</div>');
   }
 
-  return '<div class="p-actions"><button class="btn-wide send" data-send="' + source + '"' +
+  return boxHint(source) +
+    '<div class="p-actions"><button class="btn-wide send" data-send="' + source + '"' +
       (any ? '' : ' disabled') + '>📨 Прати поръчката</button></div>' +
     '<div class="warn-note">' +
       (any ? 'Поръчката още не е пратена.' : 'Избери ястия и натисни „Прати поръчката“.') +
