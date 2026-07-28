@@ -60,6 +60,25 @@ export function isLockedClient(serveDate, source, now = sofiaParts()) {
   return now.date === deadline && now.minutes >= CUTOFF_MIN;
 }
 
+/** 1 = понеделник … 7 = неделя, matching Postgres isodow. */
+export function isoDow(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return wd === 0 ? 7 : wd;
+}
+
+export function isWeekend(iso) {
+  return isoDow(iso) >= 6;
+}
+
+/**
+ * Mirrors is_working_day() in the database: weekends are always off, plus
+ * whatever dates the admin marked as non-working (official holidays).
+ */
+export function isWorkingDay(iso, nonWorking = new Set()) {
+  return !isWeekend(iso) && !nonWorking.has(iso);
+}
+
 export function formatDayLabel(iso) {
   const [y, m, d] = iso.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));

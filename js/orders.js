@@ -1,5 +1,6 @@
 import * as api from './api.js';
-import { eur, esc, todayISO, addDaysISO, isLockedClient, formatDayLabel } from './util.js';
+import { eur, esc, todayISO, addDaysISO, isLockedClient, isWorkingDay, formatDayLabel }
+  from './util.js';
 import { setStatus, flashSaved } from './ui.js';
 import { currentProfile } from './auth.js';
 
@@ -7,10 +8,15 @@ import { currentProfile } from './auth.js';
 // Аламинут is a standing list, always available. Меню exists only for dates
 // the admin has actually built one for.
 const S = {
-  alaminut: { date: null, dishes: [], qty: {}, orderId: null, locked: false },
-  menu:     { date: null, dishes: [], qty: {}, orderId: null, locked: false },
+  alaminut: { date: null, dishes: [], qty: {}, orderId: null, locked: false,
+              submitted: false, paid: false },
+  menu:     { date: null, dishes: [], qty: {}, orderId: null, locked: false,
+              submitted: false, paid: false },
 };
 let completedAt = null;
+
+/** Editable only while unlocked AND not already sent to the kitchen. */
+const editable = source => !S[source].locked && !S[source].submitted;
 let saveTimer = null;
 const dirty = new Set();          // `${source}|${dishId}`
 
@@ -31,28 +37,35 @@ function relWord(iso, today) {
 }
 
 /**
- * The section always targets the first day still open for that source, so the
+ * The first day still open for that source AND actually a working day, so the
  * screen is never a dead end. Before 10:30 that is аламинут-today and
- * меню-tomorrow; after 10:30 both roll one day forward.
+ * меню-tomorrow; after 10:30, and over weekends and holidays, it rolls
+ * forward until it lands on a day people can really order for.
  */
-function nextOpenDate(source, today) {
-  const first = source === 'alaminut' ? today : addDaysISO(today, 1);
-  return isLockedClient(first, source) ? addDaysISO(first, 1) : first;
+function nextOpenDate(source, today, nonWorking) {
+  let d = source === 'alaminut' ? today : addDaysISO(today, 1);
+  for (let i = 0; i < 21; i++) {
+    if (isWorkingDay(d, nonWorking) && !isLockedClient(d, source)) return d;
+    d = addDaysISO(d, 1);
+  }
+  return d;
 }
 
 export async function renderUserScreen() {
   const today = todayISO();
-
-  S.alaminut.date = nextOpenDate('alaminut', today);
-  S.menu.date = nextOpenDate('menu', today);
-  S.alaminut.locked = isLockedClient(S.alaminut.date, 'alaminut');
-  S.menu.locked = isLockedClient(S.menu.date, 'menu');
 
   const me = currentProfile();
   document.getElementById('uWho').textContent = me?.display_name ?? '';
 
   setStatus('зареждане…');
   try {
+    const nonWorking = await api.listNonWorking(today, addDaysISO(today, 30));
+
+    S.alaminut.date = nextOpenDate('alaminut', today, nonWorking);
+    S.menu.date = nextOpenDate('menu', today, nonWorking);
+    S.alaminut.locked = isLockedClient(S.alaminut.date, 'alaminut');
+    S.menu.locked = isLockedClient(S.menu.date, 'menu');
+
     const [ala, menuDishes, alaOrder, menuOrder] = await Promise.all([
       api.listAlaminut(),
       api.listDayMenu(S.menu.date),
@@ -65,6 +78,10 @@ export async function renderUserScreen() {
 
     S.alaminut.orderId = alaOrder?.id ?? null;
     S.menu.orderId = menuOrder?.id ?? null;
+    S.alaminut.submitted = !!alaOrder?.submitted_at;
+    S.menu.submitted = !!menuOrder?.submitted_at;
+    S.alaminut.paid = !!alaOrder?.paid_at;
+    S.menu.paid = !!menuOrder?.paid_at;
     completedAt = alaOrder?.completed_at ?? null;
 
     S.alaminut.qty = {};
@@ -93,17 +110,43 @@ function summaryText(source) {
 
 function gridHTML(source) {
   const st = S[source];
+  const ro = !editable(source);
   return st.dishes.map(d => {
     const q = Number(st.qty[d.id]) || 0;
     return '<button class="dish ' + (q ? 'picked' : '') + '"' +
-      (st.locked ? ' disabled' : '') +
+      (ro ? ' disabled' : '') +
       ' data-add="' + source + '|' + d.id + '">' +
       (q ? '<span class="badge">' + q + '</span>' +
-           (st.locked ? '' : '<span class="minus" data-sub="' + source + '|' + d.id + '">−</span>')
+           (ro ? '' : '<span class="minus" data-sub="' + source + '|' + d.id + '">−</span>')
          : '') +
       '<span class="dn">' + esc(d.name) + '</span>' +
       '<span class="dp">' + (d.price ? eur(d.price) : '—') + '</span></button>';
   }).join('');
+}
+
+/** Прати / Модифицирай, plus the state line above it. */
+function actionsHTML(source) {
+  const st = S[source];
+  const any = Object.keys(st.qty).length > 0;
+
+  if (st.locked) {
+    return '<div class="locked-note">🔒 Заключено — поръчките се приемат до 10:30.' +
+      (st.submitted ? '<br>Поръчката ти е пратена.' : '') + '</div>';
+  }
+
+  if (st.submitted) {
+    return '<div class="sent-note">✓ Пратена' +
+        (st.paid ? ' · <b>платена</b>' : '') + '</div>' +
+      '<div class="p-actions"><button class="btn-wide" data-reopen="' + source + '">' +
+        '✎ Модифицирай поръчката</button></div>' +
+      (st.paid ? '' : '<div class="warn-note">⚠ Неплатени поръчки не се обработват.</div>');
+  }
+
+  return '<div class="p-actions"><button class="btn-wide send" data-send="' + source + '"' +
+      (any ? '' : ' disabled') + '>📨 Прати поръчката</button></div>' +
+    '<div class="warn-note">' +
+      (any ? 'Поръчката още не е пратена.' : 'Избери ястия и натисни „Прати поръчката“.') +
+      '<br>⚠ Неплатени поръчки не се обработват.</div>';
 }
 
 function sectionHTML(source, title, when, rel) {
@@ -117,10 +160,8 @@ function sectionHTML(source, title, when, rel) {
         ? 'Няма въведено меню за ' + (rel || when) + '.'
         : 'Аламинут списъкът е празен.') + '</div>';
   } else {
-    inner = (st.locked
-        ? '<div class="locked-note">🔒 Заключено — поръчките се приемат до 10:30.</div>'
-        : '') +
-      '<div class="dish-grid">' + gridHTML(source) + '</div>';
+    inner = '<div class="dish-grid">' + gridHTML(source) + '</div>' +
+      actionsHTML(source);
   }
 
   return '<div class="section-head"><span>' + title + '</span>' +
@@ -138,17 +179,20 @@ function sectionHTML(source, title, when, rel) {
 
 function draw(today = todayISO()) {
   const head = (source, word) => {
-    const rel = relWord(S[source].date, today);
-    const l = formatDayLabel(S[source].date);
+    const iso = S[source].date;
+    const rel = relWord(iso, today);
+    const l = formatDayLabel(iso);
+    // The date is what people get wrong, so lead with it in full and put the
+    // днес/утре hint beside it rather than instead of it.
     return {
-      title: (rel ? rel[0].toUpperCase() + rel.slice(1) : l.dnum) + ' — ' + word,
-      when: `${l.dow}, ${l.dnum}`,
+      title: word,
+      when: `${l.dow}, ${l.dnum}` + (rel ? ` · ${rel}` : ''),
       rel,
     };
   };
 
-  const a = head('alaminut', 'аламинут');
-  const m = head('menu', 'меню');
+  const a = head('alaminut', 'Аламинут');
+  const m = head('menu', 'Меню');
 
   document.getElementById('userBody').innerHTML =
     (completedAt
@@ -171,7 +215,7 @@ function bind() {
     el.onclick = e => {
       if (e.target.hasAttribute('data-sub')) return;
       const [source, id] = el.getAttribute('data-add').split('|');
-      if (S[source].locked) return;
+      if (!editable(source)) return;
       S[source].qty[id] = (Number(S[source].qty[id]) || 0) + 1;
       touch(source, id);
     };
@@ -181,12 +225,42 @@ function bind() {
     el.onclick = e => {
       e.stopPropagation();
       const [source, id] = el.getAttribute('data-sub').split('|');
-      if (S[source].locked) return;
+      if (!editable(source)) return;
       const next = (Number(S[source].qty[id]) || 0) - 1;
       if (next > 0) S[source].qty[id] = next; else delete S[source].qty[id];
       touch(source, id);
     };
   });
+
+  document.querySelectorAll('#userBody [data-send]').forEach(el => {
+    el.onclick = () => submit(el.getAttribute('data-send'), true);
+  });
+  document.querySelectorAll('#userBody [data-reopen]').forEach(el => {
+    el.onclick = () => submit(el.getAttribute('data-reopen'), false);
+  });
+}
+
+async function submit(source, sent) {
+  const st = S[source];
+  clearTimeout(saveTimer);
+  if (dirty.size) await flush();          // never send a half-saved order
+
+  if (!st.orderId) {
+    if (!sent) return;
+    setStatus('Нямаш какво да пратиш.', 'err');
+    return;
+  }
+
+  setStatus(sent ? 'изпраща се…' : 'отваря се…');
+  try {
+    await api.setSubmitted(st.orderId, sent);
+    st.submitted = sent;
+    draw();
+    setStatus(sent ? '✓ пратена' : 'Можеш да променяш до 10:30.', sent ? 'ok' : '');
+  } catch (e) {
+    setStatus(e.message, 'err');
+    await renderUserScreen();
+  }
 }
 
 function touch(source, dishId) {

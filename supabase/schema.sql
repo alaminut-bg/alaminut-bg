@@ -104,6 +104,9 @@ create table orders (
   guest_name   text,
   completed_at timestamptz,                          -- null = not collected
   completed_by uuid references profiles(id) on delete set null,
+  submitted_at timestamptz,                          -- null = still a draft
+  paid_at      timestamptz,                          -- accounts only, not guests
+  paid_by      uuid references profiles(id) on delete set null,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   constraint one_owner check (

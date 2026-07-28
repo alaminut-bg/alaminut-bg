@@ -96,16 +96,25 @@ function gridHTML(row, dishes, source) {
 function personHTML(row, idx) {
   const done = !!row.completed_at;
   const open = row.id === openId;
+  const paid = !!row.paid_at;
+  const isUser = !!row.profile_id;          // guests pay on the spot
+  const draft = !row.submitted_at && row.items.length > 0;
+
   return '<div class="person' + (done ? ' done' : '') + (open ? ' open' : '') + '">' +
     '<div class="p-head">' +
       '<span class="p-num">' + (idx + 1) + '</span>' +
       '<div class="p-main" data-open="' + row.id + '">' +
-        '<div class="p-name">' + esc(row.who) + '</div>' +
+        '<div class="p-name">' + esc(row.who) +
+          (draft ? ' <span class="tag-draft">НЕПРАТЕНА</span>' : '') + '</div>' +
         '<div class="p-summary' + (row.items.length ? '' : ' empty') + '">' +
           (row.items.length ? esc(summary(row)) : 'няма поръчка') + '</div>' +
       '</div>' +
       '<div class="p-right">' +
         '<span class="p-total">' + eur(rowTotal(row)) + '</span>' +
+        (isUser
+          ? '<button class="paid-btn' + (paid ? ' on' : '') + '" data-paid="' + row.id + '">' +
+            (paid ? '€ ✓' : 'Плати') + '</button>'
+          : '') +
         '<button class="done-btn' + (done ? ' on' : '') + '" data-done="' + row.id + '">' +
           (done ? '✓' : 'Приключи') + '</button>' +
         '<button class="p-toggle" data-open="' + row.id + '">' + (open ? '▲' : '▼') + '</button>' +
@@ -143,6 +152,8 @@ function kitchenHTML() {
 function draw() {
   const lbl = formatDayLabel(date);
   const done = rows.filter(r => r.completed_at).length;
+  const userRows = rows.filter(r => r.profile_id).length;
+  const paidCount = rows.filter(r => r.profile_id && r.paid_at).length;
   // outstanding first — at lunchtime the useful view is who has NOT collected
   const ordered = [...rows].sort((a, b) =>
     (a.completed_at ? 1 : 0) - (b.completed_at ? 1 : 0));
@@ -160,7 +171,8 @@ function draw() {
       '<div class="locked-note">Няма въведено меню за този ден. ' +
       'Добави го в таб „Меню“.</div>') +
     '<div class="section-head"><span>Поръчки</span>' +
-      '<span class="done-count">' + done + ' / ' + rows.length + ' приключени</span></div>' +
+      '<span class="done-count">' + done + '/' + rows.length + ' приключени · ' +
+      paidCount + '/' + userRows + ' платени</span></div>' +
     (ordered.length
       ? ordered.map(personHTML).join('')
       : '<div class="empty-state"><div class="big">🍽️</div>' +
@@ -196,6 +208,19 @@ function bind() {
       try {
         await api.setCompleted(id, !row.completed_at);
         row.completed_at = row.completed_at ? null : new Date().toISOString();
+        draw();
+      } catch (err) { setStatus(err.message, 'err'); }
+    };
+  });
+
+  document.querySelectorAll('[data-paid]').forEach(el => {
+    el.onclick = async e => {
+      e.stopPropagation();
+      const id = el.getAttribute('data-paid');
+      const row = rows.find(r => r.id === id);
+      try {
+        await api.setPaid(id, !row.paid_at);
+        row.paid_at = row.paid_at ? null : new Date().toISOString();
         draw();
       } catch (err) { setStatus(err.message, 'err'); }
     };

@@ -7,6 +7,7 @@ function boom(error, fallback) {
   console.error('[alaminut]', error);   // the Bulgarian text below hides the cause
   const m = String(error.message || '');
   if (m.includes('10:30')) throw new Error('Поръчките са заключени след 10:30.');
+  if (m.includes('неработен')) throw new Error('Този ден е неработен.');
   if (m.includes('не е налично') || m.includes('не е в дневното'))
     throw new Error('Това ястие не се предлага за този ден.');
   if (m.includes('администратор')) throw new Error('Само администратор може да направи това.');
@@ -58,6 +59,33 @@ export async function listDayMenu(date) {
   return list;
 }
 
+/** Official holidays and one-off closures, as a Set of ISO dates. */
+export async function listNonWorking(fromDate, toDate) {
+  const { data, error } = await sb.from('non_working')
+    .select('serve_date, note')
+    .gte('serve_date', fromDate).lte('serve_date', toDate);
+  boom(error, 'Неработните дни не се заредиха.');
+  return new Set((data ?? []).map(r => r.serve_date));
+}
+
+export async function getNonWorking(date) {
+  const { data, error } = await sb.from('non_working')
+    .select('serve_date, note').eq('serve_date', date).maybeSingle();
+  boom(error, 'Неработните дни не се заредиха.');
+  return data;
+}
+
+export async function setNonWorking(date, off, note) {
+  if (!off) {
+    const { error } = await sb.from('non_working').delete().eq('serve_date', date);
+    boom(error, 'Промяната не се запази.');
+    return;
+  }
+  const { error } = await sb.from('non_working')
+    .upsert({ serve_date: date, note: note ?? null }, { onConflict: 'serve_date' });
+  boom(error, 'Промяната не се запази.');
+}
+
 export async function searchCatalog(q) {
   let query = sb.from('dishes')
     .select('id, name, price, in_alaminut')
@@ -75,18 +103,39 @@ export async function getMyOrder(date) {
   if (!session) return null;
 
   const { data, error } = await sb.from('orders')
-    .select(`id, completed_at, order_items(${ITEM_COLS})`)
+    .select(`id, completed_at, submitted_at, paid_at, order_items(${ITEM_COLS})`)
     .eq('serve_date', date).eq('profile_id', session.user.id).maybeSingle();
   boom(error, 'Поръчката не се зареди.');
   if (!data) return null;
-  return { id: data.id, completed_at: data.completed_at, items: data.order_items ?? [] };
+  return {
+    id: data.id,
+    completed_at: data.completed_at,
+    submitted_at: data.submitted_at,
+    paid_at: data.paid_at,
+    items: data.order_items ?? [],
+  };
+}
+
+/** The owner may submit or reopen their own order, until 10:30. */
+export async function setSubmitted(orderId, sent) {
+  const { error } = await sb.from('orders')
+    .update({ submitted_at: sent ? new Date().toISOString() : null })
+    .eq('id', orderId);
+  boom(error, 'Промяната не се запази.');
+}
+
+export async function setPaid(orderId, paid) {
+  const { error } = await sb.from('orders')
+    .update({ paid_at: paid ? new Date().toISOString() : null })
+    .eq('id', orderId);
+  boom(error, 'Промяната не се запази.');
 }
 
 export async function getDay(date) {
   // orders references profiles twice (profile_id and completed_by), so the
   // embed must name the foreign key or PostgREST refuses as ambiguous.
   const { data, error } = await sb.from('orders')
-    .select(`id, profile_id, guest_name, completed_at, created_at,
+    .select(`id, profile_id, guest_name, completed_at, submitted_at, paid_at, created_at,
              profiles!orders_profile_id_fkey(display_name),
              order_items(${ITEM_COLS})`)
     .eq('serve_date', date).order('created_at');
@@ -97,6 +146,8 @@ export async function getDay(date) {
     guest_name: o.guest_name,
     who: o.profiles?.display_name ?? o.guest_name ?? '—',
     completed_at: o.completed_at,
+    submitted_at: o.submitted_at,
+    paid_at: o.paid_at,
     items: o.order_items ?? [],
   }));
 }
