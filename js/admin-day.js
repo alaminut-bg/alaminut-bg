@@ -104,14 +104,15 @@ function personHTML(row, idx) {
   const open = row.id === openId;
   const paid = !!row.paid_at;
   const isUser = !!row.profile_id;          // guests pay on the spot
-  const draft = !row.submitted_at && row.items.length > 0;
+  // Guests pay on the spot, so only account orders can be outstanding.
+  const unpaid = isUser && !paid && row.items.length > 0;
 
   return '<div class="person' + (done ? ' done' : '') + (open ? ' open' : '') + '">' +
     '<div class="p-head">' +
       '<span class="p-num">' + (idx + 1) + '</span>' +
       '<div class="p-main" data-open="' + row.id + '">' +
         '<div class="p-name">' + esc(row.who) +
-          (draft ? ' <span class="tag-draft">НЕПРАТЕНА</span>' : '') + '</div>' +
+          (unpaid ? ' <span class="tag-draft">НЕПЛАТЕНА</span>' : '') + '</div>' +
         '<div class="p-summary' + (row.items.length ? '' : ' empty') + '">' +
           (row.items.length ? esc(summary(row)) : 'няма поръчка') + '</div>' +
       '</div>' +
