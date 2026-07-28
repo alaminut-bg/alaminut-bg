@@ -269,3 +269,7 @@ button, .tab, .dish, .done-btn, .cat-item{min-height:44px;}
   color:#6d6c5e; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer;
   font-family:inherit; flex-shrink:0; padding:0;}
 .tog.on{background:var(--khaki); border-color:var(--khaki); color:#191d16;}
+
+/* unpaid warning at the top of the kitchen summary */
+.kwarn{background:rgba(181,82,44,.16); border:1px solid var(--rust); border-radius:9px;
+  padding:11px 12px; color:#e6a68c; font-size:12.5px; line-height:1.5; margin:10px 0 4px;}
