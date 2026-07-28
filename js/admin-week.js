@@ -4,6 +4,7 @@ import { ask, flashSaved, setStatus , showError } from './ui.js';
 
 let date = todayISO();
 let dishes = [];        // this day's own menu, in order
+let mark = null;        // null | 'no_menu' | 'closed'
 let catalog = [];
 let search = '';
 let searchTimer = null;
@@ -11,9 +12,10 @@ let searchTimer = null;
 export async function renderWeek() {
   setStatus('зареждане…');
   try {
-    const [menu, cat] = await Promise.all([
-      api.listDayMenu(date), api.searchCatalog(search),
+    const [menu, cat, m] = await Promise.all([
+      api.listDayMenu(date), api.searchCatalog(search), api.getDayMark(date),
     ]);
+    mark = m?.kind ?? null;
     // Кутия and friends ride along with every day automatically. Keep them out
     // of the editable list, or saving this day would write them into
     // daily_menu for good.
@@ -63,12 +65,25 @@ function draw(keepFocus) {
 
     '<div class="set-block">' +
       '<h2>Меню за деня</h2>' +
-      (dishes.length
-        ? rowsHTML
-        : '<div class="kempty" style="padding:16px">Празен ден — кухнята не работи. ' +
-          'Добави ястие отдолу, за да го отвориш.</div>') +
+      (mark === 'closed'
+        ? '<div class="kwarn">⛔ Кухнята не работи на този ден. ' +
+          'Потребителите не могат да поръчват нищо.</div>'
+        : mark === 'no_menu'
+          ? '<div class="locked-note">🚫 Няма меню за този ден. ' +
+            'Аламинут остава достъпен.</div>'
+          : (dishes.length
+              ? rowsHTML
+              : '<div class="kempty" style="padding:16px">Още няма ястия за този ден.</div>')) +
+      '<div class="set-foot">' +
+        '<button class="btn-wide' + (mark === 'no_menu' ? ' send' : '') +
+          '" id="wNoMenu" style="margin-bottom:9px">' +
+          (mark === 'no_menu' ? '↩ Върни менюто' : '🚫 Няма меню за деня') + '</button>' +
+        '<button class="btn-wide' + (mark === 'closed' ? ' send' : '') + '" id="wClosed">' +
+          (mark === 'closed' ? '↩ Отвори деня' : '⛔ Кухнята не работи') + '</button>' +
+      '</div>' +
     '</div>' +
 
+    (mark ? '' :
     '<div class="set-block">' +
       '<h2>Добави от каталога</h2>' +
       '<div class="set-foot">' +
@@ -80,7 +95,7 @@ function draw(keepFocus) {
             esc(search.trim()) + '“</button>'
           : '') +
       '</div>' +
-    '</div>' +
+    '</div>') +
 
     '<div class="set-block">' +
       '<h2>Копирай от друг ден</h2>' +
@@ -108,6 +123,27 @@ function bind() {
   document.getElementById('wNext').onclick = () => { date = addDaysISO(date, 1); renderWeek(); };
   document.getElementById('wToday').onclick = () => { date = todayISO(); renderWeek(); };
   document.getElementById('wDate').onchange = e => { date = e.target.value; renderWeek(); };
+
+  // Two independent marks: "no меню today" still allows аламинут, while
+  // "kitchen shut" stops everything. Setting one clears the other.
+  const setMark = async (kind, title, text) => {
+    if (kind && !await ask(title, text, 'Потвърди', kind === 'no_menu')) return;
+    try {
+      await api.setDayMark(date, kind);
+      await renderWeek();
+      flashSaved();
+    } catch (e) { setStatus(e.message, 'err'); }
+  };
+
+  document.getElementById('wNoMenu').onclick = () =>
+    setMark(mark === 'no_menu' ? null : 'no_menu',
+      'Няма меню за деня',
+      'Потребителите няма да виждат меню за този ден. Аламинут остава достъпен.');
+
+  document.getElementById('wClosed').onclick = () =>
+    setMark(mark === 'closed' ? null : 'closed',
+      'Кухнята не работи',
+      'Никой няма да може да поръчва за този ден — нито меню, нито аламинут.');
 
   const s = document.getElementById('wSearch');
   if (s) s.oninput = () => {

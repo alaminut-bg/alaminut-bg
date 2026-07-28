@@ -1,4 +1,4 @@
-const CACHE = 'alaminut-v8';
+const CACHE = 'alaminut-v9';
 const SHELL = [
   './', './index.html', './app.css', './manifest.json',
   './js/app.js', './js/config.js', './js/supabase.js', './js/util.js',

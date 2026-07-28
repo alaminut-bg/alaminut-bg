@@ -59,7 +59,7 @@ export async function renderUserScreen() {
 
   setStatus('зареждане…');
   try {
-    const nonWorking = await api.listNonWorking(today, addDaysISO(today, 30));
+    const nonWorking = await api.listClosedDays(today, addDaysISO(today, 30));
 
     S.alaminut.date = nextOpenDate('alaminut', today, nonWorking);
     S.menu.date = nextOpenDate('menu', today, nonWorking);

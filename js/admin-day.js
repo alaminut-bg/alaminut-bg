@@ -7,6 +7,7 @@ let date = todayISO();
 let rows = [];          // [{id, who, completed_at, items}]
 let ala = [];           // alaminut dishes
 let menu = [];          // this day's menu dishes
+let mark = null;        // null | 'no_menu' | 'closed'
 let openId = null;
 let channel = null;
 let softTimer = null;
@@ -42,10 +43,10 @@ export async function renderAdmin() {
 export async function renderDay() {
   setStatus('зареждане…');
   try {
-    const [r, a, m] = await Promise.all([
-      api.getDay(date), api.listAlaminut(), api.listDayMenu(date),
+    const [r, a, m, mk] = await Promise.all([
+      api.getDay(date), api.listAlaminut(), api.listDayMenu(date), api.getDayMark(date),
     ]);
-    rows = r; ala = a; menu = m;
+    rows = r; ala = a; menu = m; mark = mk?.kind ?? null;
     draw();
     subscribe();
     setStatus('');
@@ -182,9 +183,13 @@ function draw() {
       '<button id="aNext">›</button>' +
       '<button class="today-pill" id="aToday">Днес</button>' +
     '</div>' +
-    (menu.length ? '' :
-      '<div class="locked-note">Няма въведено меню за този ден. ' +
-      'Добави го в таб „Меню“.</div>') +
+    (mark === 'closed'
+      ? '<div class="kwarn">⛔ Кухнята не работи на този ден.</div>'
+      : mark === 'no_menu'
+        ? '<div class="locked-note">🚫 Няма меню за този ден. Аламинут работи.</div>'
+        : menu.length ? ''
+          : '<div class="locked-note">Няма въведено меню за този ден. ' +
+            'Добави го в таб „Меню“.</div>') +
     '<div class="section-head"><span>Поръчки</span>' +
       '<span class="done-count">' + done + '/' + rows.length + ' приключени · ' +
       paidCount + '/' + userRows + ' платени</span></div>' +

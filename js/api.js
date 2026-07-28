@@ -36,16 +36,22 @@ export async function listAlaminut() {
  * appended, never duplicated if the admin also placed one on the day by hand.
  */
 export async function listDayMenu(date) {
-  const [day, pinned] = await Promise.all([
+  const [day, pinned, mark] = await Promise.all([
     sb.from('daily_menu')
       .select('position, dishes(id, name, price, archived)')
       .eq('serve_date', date).order('position'),
     sb.from('dishes')
       .select('id, name, price')
       .eq('pinned_to_menu', true).eq('archived', false).order('name'),
+    sb.from('non_working').select('kind').eq('serve_date', date).maybeSingle(),
   ]);
   boom(day.error, 'Менюто за деня не се зареди.');
   boom(pinned.error, 'Менюто за деня не се зареди.');
+  boom(mark.error, 'Менюто за деня не се зареди.');
+
+  // Marked days have no меню at all — the always-on extras go too, otherwise
+  // the user would see a lone Кутия with nothing to put in it.
+  if (mark.data) return [];
 
   const list = (day.data ?? [])
     .filter(r => r.dishes && !r.dishes.archived)
@@ -87,30 +93,40 @@ export async function unpinDish(id) {
   return upsertDish({ id, pinned_to_menu: false });
 }
 
-/** Official holidays and one-off closures, as a Set of ISO dates. */
-export async function listNonWorking(fromDate, toDate) {
+/**
+ * A day carries at most one mark:
+ *   'closed'  → kitchen shut, nothing orderable (holidays, extraordinary days)
+ *   'no_menu' → аламинут runs as usual, but there is no меню that day
+ */
+export const DAY_CLOSED = 'closed';
+export const DAY_NO_MENU = 'no_menu';
+
+/** Only fully closed days — these are the ones the user screen skips over. */
+export async function listClosedDays(fromDate, toDate) {
   const { data, error } = await sb.from('non_working')
-    .select('serve_date, note')
+    .select('serve_date')
+    .eq('kind', DAY_CLOSED)
     .gte('serve_date', fromDate).lte('serve_date', toDate);
   boom(error, 'Неработните дни не се заредиха.');
   return new Set((data ?? []).map(r => r.serve_date));
 }
 
-export async function getNonWorking(date) {
+export async function getDayMark(date) {
   const { data, error } = await sb.from('non_working')
-    .select('serve_date, note').eq('serve_date', date).maybeSingle();
-  boom(error, 'Неработните дни не се заредиха.');
+    .select('serve_date, kind, note').eq('serve_date', date).maybeSingle();
+  boom(error, 'Състоянието на деня не се зареди.');
   return data;
 }
 
-export async function setNonWorking(date, off, note) {
-  if (!off) {
+/** kind = null clears the mark. */
+export async function setDayMark(date, kind, note) {
+  if (!kind) {
     const { error } = await sb.from('non_working').delete().eq('serve_date', date);
     boom(error, 'Промяната не се запази.');
     return;
   }
   const { error } = await sb.from('non_working')
-    .upsert({ serve_date: date, note: note ?? null }, { onConflict: 'serve_date' });
+    .upsert({ serve_date: date, kind, note: note ?? null }, { onConflict: 'serve_date' });
   boom(error, 'Промяната не се запази.');
 }
 
