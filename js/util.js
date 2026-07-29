@@ -5,6 +5,9 @@ export const MON = ['януари','февруари','март','април','�
 /** Orders close at 10:30 Sofia time, expressed as minutes past midnight. */
 export const CUTOFF_MIN = 10 * 60 + 30;
 
+/** Cancelling closes five minutes earlier, so the kitchen gets a settled count. */
+export const CANCEL_CUTOFF_MIN = 10 * 60 + 25;
+
 export function eur(n) {
   const v = Math.round((Number(n) + Number.EPSILON) * 100) / 100;
   return v.toFixed(2).replace('.', ',') + ' €';
@@ -58,6 +61,13 @@ export function isLockedClient(serveDate, source, now = sofiaParts()) {
   const deadline = source === 'alaminut' ? serveDate : addDaysISO(serveDate, -1);
   if (now.date > deadline) return true;
   return now.date === deadline && now.minutes >= CUTOFF_MIN;
+}
+
+/** Same deadline day as the lock, but five minutes earlier. */
+export function canCancelClient(serveDate, source, now = sofiaParts()) {
+  const deadline = source === 'alaminut' ? serveDate : addDaysISO(serveDate, -1);
+  if (now.date > deadline) return false;
+  return now.date < deadline || now.minutes < CANCEL_CUTOFF_MIN;
 }
 
 /** 1 = понеделник … 7 = неделя, matching Postgres isodow. */

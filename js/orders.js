@@ -1,7 +1,7 @@
 import * as api from './api.js';
-import { eur, esc, todayISO, addDaysISO, isLockedClient, isWorkingDay, formatDayLabel }
-  from './util.js';
-import { setStatus, flashSaved , showError } from './ui.js';
+import { eur, esc, todayISO, addDaysISO, isLockedClient, canCancelClient,
+         isWorkingDay, formatDayLabel } from './util.js';
+import { setStatus, flashSaved, ask, showError } from './ui.js';
 import { currentProfile } from './auth.js';
 
 // One section per source. alaminut is served today, menu is served tomorrow.
@@ -166,21 +166,32 @@ function actionsHTML(source) {
       (st.submitted ? '<br>Поръчката ти е пратена.' : '') + '</div>';
   }
 
+  // Cancelling closes at 10:25, five minutes before ordering does.
+  const canCancel = any && st.orderId && canCancelClient(st.date, source);
+  const cancelBtn = canCancel
+    ? '<button class="btn-wide danger" data-cancel="' + source + '">' +
+      '✕ Откажи поръчката</button>'
+    : '';
+  const cancelNote = any && !canCancel
+    ? '<br>Отказ вече не е възможен — приема се до 10:25.'
+    : '';
+
   if (st.submitted) {
     return boxHint(source) +
       '<div class="sent-note">✓ Пратена' +
         (st.paid ? ' · <b>платена</b>' : '') + '</div>' +
       '<div class="p-actions"><button class="btn-wide" data-reopen="' + source + '">' +
-        '✎ Модифицирай поръчката</button></div>' +
-      (st.paid ? '' : '<div class="warn-note">⚠ Неплатени поръчки не се обработват.</div>');
+        '✎ Модифицирай</button>' + cancelBtn + '</div>' +
+      '<div class="warn-note">' +
+        (st.paid ? '' : '⚠ Неплатени поръчки не се обработват.') + cancelNote + '</div>';
   }
 
   return boxHint(source) +
     '<div class="p-actions"><button class="btn-wide send" data-send="' + source + '"' +
-      (any ? '' : ' disabled') + '>📨 Прати поръчката</button></div>' +
+      (any ? '' : ' disabled') + '>📨 Прати поръчката</button>' + cancelBtn + '</div>' +
     '<div class="warn-note">' +
       (any ? 'Поръчката още не е пратена.' : 'Избери ястия и натисни „Прати поръчката“.') +
-      '<br>⚠ Неплатени поръчки не се обработват.</div>';
+      '<br>⚠ Неплатени поръчки не се обработват.' + cancelNote + '</div>';
 }
 
 function sectionHTML(source, title, when, rel) {
@@ -278,6 +289,27 @@ function bind() {
   document.querySelectorAll('#userBody [data-reopen]').forEach(el => {
     el.onclick = () => submit(el.getAttribute('data-reopen'), false);
   });
+  document.querySelectorAll('#userBody [data-cancel]').forEach(el => {
+    el.onclick = () => cancel(el.getAttribute('data-cancel'));
+  });
+}
+
+async function cancel(source) {
+  const st = S[source];
+  if (!st.orderId) return;
+  if (!await ask('Отказ на поръчката',
+    'Поръчката ти за този ден ще бъде премахната напълно.', 'Откажи я')) return;
+
+  clearTimeout(saveTimer);
+  dirty.clear();
+  setStatus('отказва се…');
+  try {
+    await api.cancelOrder(st.orderId, source);
+    setStatus('Поръчката е отказана.', 'ok');
+  } catch (e) {
+    setStatus(e.message, 'err');
+  }
+  await renderUserScreen();
 }
 
 async function submit(source, sent) {

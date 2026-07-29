@@ -243,6 +243,29 @@ export async function setItem(orderId, dishId, source, qty, unitPrice) {
   boom(error, 'Промяната не се запази.');
 }
 
+/**
+ * Cancels one section of a day's order. Only that source is removed, because
+ * the same order row can also hold the other source, whose deadline has
+ * already passed. If nothing is left, the row goes too, so the admin's list
+ * does not keep an empty name in it.
+ */
+export async function cancelOrder(orderId, source) {
+  const { error } = await sb.from('order_items').delete()
+    .eq('order_id', orderId).eq('source', source);
+  boom(error, 'Отказът не мина.');
+
+  const { data, error: leftErr } = await sb.from('order_items')
+    .select('id').eq('order_id', orderId).limit(1);
+  boom(leftErr, 'Отказът не мина.');
+
+  if (!data?.length) {
+    const { error: delErr } = await sb.from('orders').delete().eq('id', orderId);
+    boom(delErr, 'Отказът не мина.');
+    return true;          // the whole row went
+  }
+  return false;
+}
+
 export async function clearOrderItems(orderId) {
   const { error } = await sb.from('order_items').delete().eq('order_id', orderId);
   boom(error, 'Изчистването не мина.');
